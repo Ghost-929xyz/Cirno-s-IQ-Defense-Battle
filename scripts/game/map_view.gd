@@ -76,6 +76,35 @@ func get_path_points() -> PackedVector2Array:
 	return points
 
 
+func get_play_rect() -> Rect2:
+	return Rect2(position, BOARD_SIZE)
+
+
+func get_closest_path_world_position(origin: Vector2) -> Vector2:
+	var points := get_path_points()
+	if points.is_empty():
+		return origin
+	if points.size() == 1:
+		return points[0]
+
+	var closest := points[0]
+	var closest_distance := origin.distance_squared_to(closest)
+	for index in range(points.size() - 1):
+		var segment_start := points[index]
+		var segment_end := points[index + 1]
+		var segment := segment_end - segment_start
+		var segment_length_squared := segment.length_squared()
+		var candidate := segment_start
+		if segment_length_squared > 0.0001:
+			var t := clampf((origin - segment_start).dot(segment) / segment_length_squared, 0.0, 1.0)
+			candidate = segment_start + segment * t
+		var candidate_distance := origin.distance_squared_to(candidate)
+		if candidate_distance < closest_distance:
+			closest = candidate
+			closest_distance = candidate_distance
+	return closest
+
+
 func set_hover_cell(cell: Vector2i) -> void:
 	if hover_cell == cell:
 		return

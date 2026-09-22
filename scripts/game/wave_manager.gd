@@ -7,6 +7,7 @@ signal spawn_requested(enemy_id: String, hp_scale: float)
 
 var current_index := -1
 var running := false
+var paused := false
 
 var _events: Array[Dictionary] = []
 var _event_index := 0
@@ -26,10 +27,11 @@ func start_wave(index: int) -> bool:
 	_event_index = 0
 	_elapsed = 0.0
 	_alive_enemies = 0
+	paused = false
 
 	var hp_scale := float(wave.get("hp_scale", 1.0))
 	for group in wave.get("groups", []):
-		var enemy_id := str(group.get("enemy_id", "tadpole"))
+		var enemy_id := str(group.get("enemy_id", "dew_fairy"))
 		var count := int(group.get("count", 1))
 		var interval := float(group.get("interval", 1.0))
 		var delay := float(group.get("delay", 0.0))
@@ -55,8 +57,12 @@ func notify_enemy_finished() -> void:
 	_try_finish()
 
 
+func set_paused(value: bool) -> void:
+	paused = value
+
+
 func _process(delta: float) -> void:
-	if not running:
+	if not running or paused:
 		return
 	_elapsed += delta
 	while _event_index < _events.size() and float(_events[_event_index].time) <= _elapsed:
@@ -67,7 +73,7 @@ func _process(delta: float) -> void:
 
 
 func _try_finish() -> void:
-	if not running:
+	if not running or paused:
 		return
 	if _event_index >= _events.size() and _alive_enemies <= 0:
 		running = false
@@ -76,6 +82,7 @@ func _try_finish() -> void:
 
 func stop() -> void:
 	running = false
+	paused = false
 	_events.clear()
 	_event_index = 0
 	_alive_enemies = 0
