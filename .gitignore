@@ -1,0 +1,7 @@
+# Godot 4 generated files
+.godot/
+
+# Local editor/tooling artifacts
+.tools/
+*.tmp
+*.log
