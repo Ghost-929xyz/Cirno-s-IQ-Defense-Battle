@@ -13,7 +13,7 @@
 ## 2. 分层
 
 ```text
-Presentation        BattleHUD、LakeMapView、HitEffect
+Presentation        BattleHUD、LakeMapView、HitEffect、EnchantDrop
 Game Flow           FogLakeLevel、WaveManager、UpgradeManager
 Entity Simulation   DefenseStructure、CirnoTower、FairyBarracks
                     CirnoHero、FairyEnemy、AllyUnit、TowerProjectile
@@ -29,15 +29,18 @@ MainMenu (menu.tscn / main_menu.gd)     开始菜单，change_scene_to_file 进�
 └── (代码构建的标题、按钮、帮助面板、飘雪背景)
 
 FogLakeLevel (main.tscn / game.gd)
-├── MapView                 path、grid、IQ 结晶、四向出生裂缝、hover
-├── Towers                  CirnoTower 实例
-├── Barracks                FairyBarracks 实例
-├── Allies                  AllyUnit 实例
-├── Hero                    单个 CirnoHero
-├── Enemies                 FairyEnemy 实例
-├── Projectiles             TowerProjectile 实例
-├── Effects                 HitEffect 实例
-├── HUD                     BattleHUD
+├── World (Node2D 世界容器)
+│   ├── MapView             256×192 格、8px、四条弯曲样条路径、IQ 结晶、框选矩形
+│   ├── Camera2D            居中相机（地图远超窗口，配合缩放与拖动）
+│   ├── Towers              CirnoTower 实例
+│   ├── Barracks            FairyBarracks 实例
+│   ├── Allies              AllyUnit 实例
+│   ├── Hero                单个 CirnoHero
+│   ├── Enemies             FairyEnemy 实例
+│   ├── Projectiles         TowerProjectile 实例
+│   ├── Effects             HitEffect 实例
+│   └── Drops               EnchantDrop 掉落物实例
+├── HUD (CanvasLayer)       顶部状态栏 + 底部可收起 dock + 弹窗（见 §3.1）
 └── TutorialOverlay         新手引导（未完成引导时运行时创建）
 
 FogLakeLevel
@@ -48,15 +51,28 @@ FogLakeLevel
 
 `scripts/autoload/session.gd` 用静态变量保存跨场景会话状态（当前只有新手引导完成标记），不依赖 autoload 注册，任何运行方式下都可用。
 
+### 3.1 HUD（`scripts/ui/hud.gd`，需求 3 / 4 / 5）
+
+HUD 是 CanvasLayer，全部控件由代码构建，包含：
+
+- **顶部状态栏**（横贯、高 72px）：标题、琪露诺血条 + 数值、冻气 / 冰晶 / 波次与在场数、状态文字。右侧不再有纵向侧边栏。
+- **底部建造 dock**（高 126px，半透明，可收起至 36px）：6 个建造按钮（塔 ×3 + 兵营 ×3）、英雄技能与开始按钮、收起开关。收起后右侧完全解放。
+- **建筑详情面板**：右下小浮窗，选中单个结构时显示 HP / 等级 / 升级费用。
+- **祝福 / 附魔弹窗**（`_modifier_overlay`）：居中，横向三选一卡片。
+- **结算弹窗**（`_settlement_overlay`）：波末显示本波收益，`settlement_continue_requested` 信号推进。
+- **结算弹窗**（`_result_overlay`）：胜 / 负结算，可重开或回菜单。
+
 ## 4. 类职责
 
 ### FogLakeLevel
 
-- 管理准备、交战、附魔、祝福与结算阶段。
+- 管理准备、交战、结算、附魔、祝福与结束阶段（`PREP / COMBAT / SETTLEMENT / UPGRADE / ENCHANT / FINISHED`）。
 - 处理建造、升级、选择建筑和英雄移动。
-- 维护 `_structure_cells`，把网格位置映射到建筑实例。
-- 接收妖精死亡、漏怪、建筑摧毁和波次结束信号。
+- 维护 `_structure_cells`，把网格位置映射到建筑实例；防御塔与兵营按占地轮廓登记格。
+- 接收妖精死亡、漏怪、建筑摧毁和波次结束信号；波末进入 `SETTLEMENT` 结算收益（需求 5）。
 - 调用 `UpgradeManager` 取得三选一并同步全局修正。
+- 负责左键点选 / 框选（`_select_objects_in_rect`）友方与建筑，并让选中的塔 / 单位右键指定攻击目标（需求 10）。
+- 击杀精英时在 `Drops` 下生成 `EnchantDrop` 十字芒星掉落物，左键点击拾取后进入附魔三选一（需求 8）。
 
 ### WaveManager
 
@@ -67,11 +83,11 @@ FogLakeLevel
 
 ### LakeMapView
 
-- 生成路径格、草地格和可玩矩形。
-- 维护 `PATHS`（四条出兵路径，全部汇向 `CORE_CELL`）与 `DEFAULT_ENTRANCE`。
-- 提供 `world_to_cell`、`is_buildable`、`has_entrance`、`get_path_points(entrance_id)`、`get_core_world_position`。
+- 256 × 192 像素格、每格 8 像素，生成路径格、草地格和可玩矩形。
+- `PATHS`：四条沿 Catmull-Rom 样条蜿蜒的弯曲路径，全部汇向 `CORE_CELL(224, 96)`；路宽约 5 格，路线深色、空地无色。
+- 提供 `world_to_cell`、`is_buildable`（路线 / 核心 / 入口不可建）、`has_entrance`、`get_path_points(entrance_id)`、`get_core_world_position`。
 - 提供 `get_closest_path_world_position`，跨所有路径供兵营确定单位出生点。
-- 绘制四向出生裂缝（带方向指示与方位标签）、IQ 结晶和建造悬停状态。
+- 绘制四向出生裂缝、IQ 结晶、建造悬停状态与框选矩形。
 
 ### DefenseStructure
 
@@ -81,34 +97,40 @@ FogLakeLevel
 
 ### CirnoTower
 
-- 按射程寻找优先目标或最近妖精。
+- 占地为 5 行 13531 菱形（需求 6）；按射程寻找优先目标或最近妖精。
 - 创建投射物并应用伤害、溅射、减速修正。
 - 根据等级和全局 modifier 重算伤害、射程与攻击间隔。
+- 支持被框选 / 点选后右键指定优先攻击目标（需求 10）。
 
 ### FairyBarracks
 
-- 只在交战阶段工作。
+- 占地 3×3（需求 6），只在交战阶段工作。
 - 维护存活己方兵种并限制召唤上限。
-- 通过 `FogLakeLevel.spawn_ally` 创建单位。
+- 通过 `FogLakeLevel.spawn_ally` 创建单位；波末结算后存活单位回到出生点附近 7×7 像素内驻扎（需求 5）。
 
 ### CirnoHero
 
 - 持有生命值、护甲与准备阶段回血；生命归零时发出 `defeated` 信号，这是关卡唯一失败条件。
-- 受右键移动目标和可玩矩形约束。
+- 受右键移动目标和可玩矩形约束；右键移动时在脚底绘制方向箭头，不再显示移动轨迹（需求 9）。
 - 自动索敌、攻击并管理 Q/R 冷却。
 - 维护 Baka 寒气击杀阈值被动。
 
 ### FairyEnemy
 
-- 沿 PackedVector2Array 路径移动。
+- 沿 PackedVector2Array 弯曲路径移动。
 - 扫描附近己方兵种、建筑与琪露诺并停下攻击。
-- 处理护甲、减速、冻结、死亡奖励与漏怪伤害信号。
+- 处理护甲、减速、冻结、死亡奖励与漏怪伤害信号；精英死亡时由关卡生成附魔掉落物。
 
 ### AllyUnit
 
-- 自动寻找最近妖精并追击。
+- 自动寻找最近妖精并追击；支持被选中后右键指定攻击目标。
 - 根据攻击距离选择近战伤害或投射物。
 - 死亡时通知所属兵营移除引用。
+
+### EnchantDrop
+
+- 精英掉落的附魔拾取物，绘制为高亮脉冲的十字芒星（需求 8）。
+- 由 `FogLakeLevel` 在 `Drops` 容器下创建，左键点击拾取后触发附魔三选一。
 
 ### UpgradeManager
 
@@ -128,6 +150,7 @@ modifier_card_selected
 hero_skill_requested
 restart_requested
 menu_requested
+settlement_continue_requested
 ```
 
 实体只报告事实，不直接改全局资源：
@@ -149,12 +172,12 @@ TutorialOverlay.finished / skipped
 
 | 文件 | 内容 |
 |---|---|
-| `tower_catalog.gd` | 3 种防御塔数值 |
+| `tower_catalog.gd` | 3 种防御塔数值（需求 7：伤害 ×0.75） |
 | `barracks_catalog.gd` | 3 种兵营与召唤参数 |
-| `ally_catalog.gd` | 近卫、射手、法师数值 |
+| `ally_catalog.gd` | 近卫、射手、法师数值（需求 7：整体 ×0.75） |
 | `build_catalog.gd` | 合并 1-6 建造项并区分塔/兵营 |
 | `enemy_catalog.gd` | 普通、精英与 Boss 数值 |
-| `wave_catalog.gd` | 10 波生成事件、出兵口与血量倍率 |
+| `wave_catalog.gd` | 10 波生成事件、出兵口与血量倍率（需求 7：第二波起数量大幅上调） |
 | `upgrade_catalog.gd` | 笨蛋灵感与冰晶附魔 |
 
 ## 7. 后续扩展
@@ -184,12 +207,15 @@ scripts/data/resources/*.tres
 
 ## 8. 验证
 
-项目包含三条无窗口测试：
+项目包含四条无窗口测试：
 
 ```powershell
-godot --headless --path . --script .tools/smoke_test.gd    # 建造、开波、单位生成、英雄技能
-godot --headless --path . --script .tools/ui_test.gd       # 菜单、四入口路径、新手引导、多入口出兵
-godot --headless --path . --script .tools/battle_test.gd   # 多入口混编战斗全链路
+godot --headless --path . --script .tools/smoke_test.gd      # 建造、开波、单位生成、英雄技能
+godot --headless --path . --script .tools/ui_test.gd         # 菜单、四入口路径、新手引导、多入口出兵
+godot --headless --path . --script .tools/battle_test.gd     # 多入口混编战斗全链路
+godot --headless --path . --script .tools/settlement_test.gd # 波末结算 -> 祝福三选一 -> 准备 全链路
 ```
 
-`smoke_test` 会实例化主场景，建造一座冰锥塔和一座冰晶兵营，开始第 1 波，等待妖精与己方兵种生成，然后释放 Q/R。`ui_test` 额外校验菜单场景、四条入口路径、波次数据中的 `entrance` 合法性以及引导推进。`battle_test` 从四个入口混编增兵，验证塔、兵营、英雄技能与漏怪扣除琪露诺生命全链路无报错。
+`smoke_test` 会实例化主场景，建造一座冰锥塔和一座冰晶兵营，开始第 1 波，等待妖精与己方兵种生成，然后释放 Q/R。`ui_test` 额外校验菜单场景、四条入口路径、波次数据中的 `entrance` 合法性以及引导推进。`battle_test` 从四个入口混编增兵，验证塔、兵营、英雄技能与漏怪扣除琪露诺生命全链路无报错。`settlement_test` 驱动 `_on_wave_finished → SETTLEMENT → _on_settlement_continue_requested → UPGRADE(祝福三选一) → PREP` 全链路。
+
+窗口截图验证（需要真实渲染）由 `.tools/screenshot.gd` 提供，输出到 `%TEMP%/gamemakers_shots/`。

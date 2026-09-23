@@ -5,20 +5,21 @@ signal defeated(hero: CirnoHero)
 
 const ProjectileScript = preload("res://scripts/entities/projectile.gd")
 
-const BASE_MAX_HP := 240.0
+## 需求 7：英雄数值整体下调（190 血 / 普攻 14 / 新星 22 / 冻结 12 / 被动 6）。
+const BASE_MAX_HP := 190.0
 
 var arena_rect := Rect2()
 var move_target := Vector2.INF
 var attack_range := 145.0
 var attack_interval := 0.68
-var attack_damage := 18.0
+var attack_damage := 14.0
 var move_speed := 150.0
 var frost_nova_cooldown := 8.0
 var absolute_freeze_cooldown := 16.0
 var max_hp := BASE_MAX_HP
 var current_hp := BASE_MAX_HP
 var armor := 2.0
-var hp_regen_per_second := 8.0
+var hp_regen_per_second := 6.0
 
 var _owner_game: Node
 var _attack_cooldown := 0.0
@@ -30,6 +31,7 @@ var _attack_speed_multiplier := 1.0
 var _cooldown_multiplier := 1.0
 var _flash_remaining := 0.0
 var _dead := false
+var _selected := false
 
 
 func _ready() -> void:
@@ -58,6 +60,11 @@ func update_modifiers(modifiers: Dictionary) -> void:
 	if max_hp > previous_max:
 		current_hp += max_hp - previous_max
 	current_hp = clampf(current_hp, 0.0, max_hp)
+	queue_redraw()
+
+
+func set_selected(value: bool) -> void:
+	_selected = value
 	queue_redraw()
 
 
@@ -124,7 +131,7 @@ func trigger_baka_passive() -> void:
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
 		if global_position.distance_to(enemy.global_position) <= 135.0:
-			enemy.take_damage(8.0 * _damage_multiplier)
+			enemy.take_damage(6.0 * _damage_multiplier)
 			if is_instance_valid(enemy):
 				enemy.apply_slow(0.58, 2.8)
 	if is_instance_valid(_owner_game):
@@ -216,7 +223,7 @@ func _cast_frost_nova() -> void:
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
 		if global_position.distance_to(enemy.global_position) <= 145.0:
-			enemy.take_damage(28.0 * _damage_multiplier)
+			enemy.take_damage(22.0 * _damage_multiplier)
 			if is_instance_valid(enemy):
 				enemy.apply_slow(0.48, 3.0)
 	_owner_game.spawn_hit_effect(global_position, Color("#a8f4ff"), 152.0)
@@ -237,14 +244,27 @@ func _cast_absolute_freeze() -> void:
 		return
 	_freeze_cooldown = absolute_freeze_cooldown
 	target.apply_freeze(3.0)
-	target.take_damage(16.0 * _damage_multiplier)
+	target.take_damage(12.0 * _damage_multiplier)
 	_owner_game.spawn_hit_effect(target.global_position, Color("#ffffff"), 48.0)
 
 
 func _draw() -> void:
 	var bob := sin(_bob_time * 5.2) * 2.2
+	# 需求 9：脚底方向箭头（不再绘制移动轨迹线）
 	if not _dead and move_target.is_finite():
-		draw_line(Vector2.ZERO, move_target - global_position, Color(0.65, 0.92, 1.0, 0.16), 1.5)
+		var move_offset := move_target - global_position
+		if move_offset.length() > 6.0:
+			var direction := move_offset.normalized()
+			var arrow_base := Vector2(0.0, 31.0 + bob)
+			var tip := arrow_base + direction * 16.0
+			var back_left := arrow_base + direction.rotated(2.55) * 9.0
+			var back_right := arrow_base + direction.rotated(-2.55) * 9.0
+			draw_colored_polygon(PackedVector2Array([tip, back_left, back_right]), Color(0.10, 0.88, 1.0, 0.88))
+			draw_polyline(PackedVector2Array([tip, back_left, back_right, tip]), Color("#dffcff"), 1.6, true)
+
+	if _selected:
+		draw_arc(Vector2.ZERO, 24.0, 0.0, TAU, 40, Color(0.45, 0.96, 1.0, 0.85), 2.2)
+		draw_circle(Vector2.ZERO, 26.0, Color(0.45, 0.96, 1.0, 0.08))
 
 	draw_circle(Vector2(0.0, 13.0 + bob), 17.0, Color(0.01, 0.04, 0.09, 0.35))
 	for angle_index in range(6):

@@ -7,28 +7,45 @@ const EnemyScript = preload("res://scripts/entities/enemy.gd")
 const AllyScript = preload("res://scripts/entities/ally_unit.gd")
 const HeroScript = preload("res://scripts/entities/hero.gd")
 const HitEffectScript = preload("res://scripts/effects/hit_effect.gd")
+const EnchantDropScript = preload("res://scripts/entities/drop.gd")
 const TutorialOverlayScript = preload("res://scripts/ui/tutorial_overlay.gd")
 const SessionScript = preload("res://scripts/autoload/session.gd")
 
 const FROST_START := 180.0
-const PREP_FROST_PER_SECOND := 5.0
+## 需求 7：寒气自增速度降低 50%（5.0 → 2.5）。
+const PREP_FROST_PER_SECOND := 2.5
+
+## 需求 6：兵营占地 3×3（锚点 ±1 格）。
+const BARRACKS_HALF_CELLS := 1
+## 需求 6：防御塔五行 13531（菱形 13 格）。
+const TOWER_FOOTPRINT := [
+	Vector2i(0, -2),
+	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
+	Vector2i(-2, 0), Vector2i(-1, 0), Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+	Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1),
+	Vector2i(0, 2),
+]
 
 enum Phase {
 	PREP,
 	COMBAT,
+	## 需求 5：波末结算。
+	SETTLEMENT,
 	UPGRADE,
 	ENCHANT,
 	FINISHED,
 }
 
-@onready var map_view: LakeMapView = $MapView
-@onready var towers: Node2D = $Towers
-@onready var barracks_container: Node2D = $Barracks
-@onready var allies: Node2D = $Allies
-@onready var hero_container: Node2D = $Hero
-@onready var enemies: Node2D = $Enemies
-@onready var projectiles: Node2D = $Projectiles
-@onready var effects: Node2D = $Effects
+@onready var map_view: LakeMapView = $World/MapView
+@onready var camera: Camera2D = $World/Camera2D
+@onready var towers: Node2D = $World/Towers
+@onready var barracks_container: Node2D = $World/Barracks
+@onready var allies: Node2D = $World/Allies
+@onready var hero_container: Node2D = $World/Hero
+@onready var enemies: Node2D = $World/Enemies
+@onready var projectiles: Node2D = $World/Projectiles
+@onready var effects: Node2D = $World/Effects
+@onready var drops: Node2D = $World/Drops
 @onready var hud: BattleHUD = $HUD
 
 var phase := Phase.PREP
@@ -45,8 +62,21 @@ var _tutorial: CanvasLayer
 var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _structure_cells: Dictionary = {}
-var _status_text := "右键移动琪露诺；或选择建筑后点击草地格部署。"
+var _selected_nodes: Array[Node2D] = []
+var _status_text := "右键移动琪露诺；左键建造或框选；WASD/方向键与滚轮移动镜头。"
 var _enchant_open := false
+
+# 镜头控制（需求 1/2）
+var _camera_pan_speed := 820.0
+var _camera_min_zoom := 0.55
+var _camera_max_zoom := 1.8
+var _camera_edge := 30.0
+
+# 左键拖拽/框选（需求 10）
+var _drag_start_screen := Vector2.ZERO
+var _drag_start_world := Vector2.ZERO
+var _is_dragging := false
+const _DRAG_THRESHOLD := 6.0
 
 
 func _ready() -> void:
@@ -65,10 +95,15 @@ func _ready() -> void:
 	hud.hero_skill_requested.connect(_on_hero_skill_requested)
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.menu_requested.connect(_on_menu_requested)
+	hud.settlement_continue_requested.connect(_on_settlement_continue_requested)
 
 	_setup_tutorial()
 	_spawn_hero()
 	hud.select_build_item(_selected_build_id)
+	# 初始镜头对准棋盘中心，让玩家看到四条路的走向
+	if camera != null:
+		camera.position = map_view.position + map_view.get_board_rect_local().get_center()
+		_clamp_camera()
 	_refresh_hud()
 
 
@@ -91,30 +126,99 @@ func _process(delta: float) -> void:
 		frost += PREP_FROST_PER_SECOND * float(_upgrade_manager.modifiers.get("frost_regen_multiplier", 1.0)) * delta
 		if is_instance_valid(_hero):
 			_hero.regen(delta)
+	_process_camera(delta)
 	_refresh_hud()
+
+
+func _process_camera(delta: float) -> void:
+	if camera == null:
+		return
+	var pan := Vector2.ZERO
+	if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
+		pan.x -= 1.0
+	if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
+		pan.x += 1.0
+	if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
+		pan.y -= 1.0
+	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
+		pan.y += 1.0
+	if get_viewport().has_focus():
+		var viewport_size := get_viewport().get_visible_rect().size
+		var mouse := get_viewport().get_mouse_position()
+		if mouse.x < _camera_edge:
+			pan.x -= 1.0
+		elif mouse.x > viewport_size.x - _camera_edge:
+			pan.x += 1.0
+		if mouse.y < _camera_edge:
+			pan.y -= 1.0
+		elif mouse.y > viewport_size.y - _camera_edge:
+			pan.y += 1.0
+	if pan.length() > 0.0:
+		camera.position += pan.normalized() * _camera_pan_speed * delta / camera.zoom.x
+		_clamp_camera()
+
+
+func _clamp_camera() -> void:
+	if camera == null:
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var half := viewport_size * 0.5 / camera.zoom
+	var board := Rect2(map_view.position, map_view.get_board_rect_local().size)
+	var min_x := board.position.x + half.x
+	var max_x := board.end.x - half.x
+	var min_y := board.position.y + half.y
+	var max_y := board.end.y - half.y
+	camera.position.x = board.get_center().x if max_x < min_x else clampf(camera.position.x, min_x, max_x)
+	camera.position.y = board.get_center().y if max_y < min_y else clampf(camera.position.y, min_y, max_y)
+
+
+func _zoom_camera(factor: float) -> void:
+	if camera == null:
+		return
+	var new_zoom := clampf(camera.zoom.x * factor, _camera_min_zoom, _camera_max_zoom)
+	if is_equal_approx(new_zoom, camera.zoom.x):
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var mouse_screen := get_viewport().get_mouse_position()
+	var before := camera.position + (mouse_screen - viewport_size * 0.5) / camera.zoom
+	camera.zoom = Vector2(new_zoom, new_zoom)
+	camera.position = before - (mouse_screen - viewport_size * 0.5) / camera.zoom
+	_clamp_camera()
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _tutorial != null and _tutorial.has_method("is_blocking") and _tutorial.call("is_blocking"):
 		return
+
 	if event is InputEventMouseMotion:
-		map_view.set_hover_cell(map_view.world_to_cell(event.position))
+		if _is_dragging:
+			var end_world := get_global_mouse_position()
+			map_view.set_selection_rect(Rect2(_drag_start_world, Vector2.ZERO).expand(end_world))
+		else:
+			map_view.set_hover_cell(map_view.world_to_cell(get_global_mouse_position()))
 		return
 
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			_handle_right_click(event.position)
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+			_zoom_camera(1.12)
 			return
-		if event.button_index != MOUSE_BUTTON_LEFT:
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+			_zoom_camera(0.893)
 			return
-		if event.position.x >= 770.0:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_begin_left_drag()
+			else:
+				_end_left_drag()
 			return
-		_handle_left_click(event.position)
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_handle_right_click(get_global_mouse_position())
+			return
 		return
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE:
-			_clear_structure_selection()
+			_clear_selection()
 		elif event.keycode == KEY_SPACE:
 			_on_start_wave_requested()
 		elif event.keycode == KEY_Q:
@@ -142,6 +246,14 @@ func can_barracks_spawn() -> bool:
 	return phase == Phase.COMBAT
 
 
+func is_combat() -> bool:
+	return phase == Phase.COMBAT
+
+
+func get_cell_size() -> float:
+	return map_view.CELL_SIZE
+
+
 func get_ally_modifiers() -> Dictionary:
 	return _upgrade_manager.modifiers
 
@@ -158,6 +270,7 @@ func spawn_ally(barracks: FairyBarracks, unit_id: String) -> AllyUnit:
 	allies.add_child(unit)
 	var spawn_position := _get_unit_spawn_position(barracks.global_position)
 	unit.setup(self, definition, spawn_position)
+	unit.set_home(barracks)
 	return unit
 
 
@@ -181,41 +294,109 @@ func get_hero_max_hp() -> int:
 	return int(round(_hero.get_max_hp()))
 
 
+func _begin_left_drag() -> void:
+	_drag_start_screen = get_viewport().get_mouse_position()
+	_drag_start_world = get_global_mouse_position()
+	_is_dragging = true
+	map_view.clear_selection_rect()
+
+
+func _end_left_drag() -> void:
+	_is_dragging = false
+	map_view.clear_selection_rect()
+	var end_world := get_global_mouse_position()
+	var drag_distance := get_viewport().get_mouse_position().distance_to(_drag_start_screen)
+	if drag_distance >= _DRAG_THRESHOLD:
+		_select_objects_in_rect(Rect2(_drag_start_world, Vector2.ZERO).expand(end_world))
+	else:
+		_handle_left_click(end_world)
+
+
 func _handle_left_click(world_position: Vector2) -> void:
+	# 需求 8：优先拾取掉落物
+	if _pick_up_drop(world_position):
+		return
+
 	var cell := map_view.world_to_cell(world_position)
 	var existing := _find_structure_at(cell)
 	if existing != null:
-		_select_structure(existing)
+		_set_selection([existing])
 		return
+
+	var unit := _find_ally_at(world_position)
+	if unit != null:
+		_set_selection([unit])
+		return
+	if is_instance_valid(_hero) and _hero.is_alive() and world_position.distance_to(_hero.global_position) <= 26.0:
+		_set_selection([_hero])
+		return
+
 	if not map_view.is_inside(cell):
+		if _selected_nodes.size() > 0:
+			_clear_selection()
 		return
 	if map_view.is_buildable(cell):
+		_clear_selection()
 		_try_build_structure(cell)
 	else:
-		_status_text = "道路和 IQ 结晶所在格不能建造。"
+		if _selected_nodes.size() > 0:
+			_clear_selection()
+		else:
+			_status_text = "道路和 IQ 结晶所在格不能建造。"
+			_refresh_hud()
 
 
 func _handle_right_click(world_position: Vector2) -> void:
-	if _selected_structure != null and is_instance_valid(_selected_structure):
+	# 需求 10：框选/点选后，右键妖精指定优先攻击目标
+	if _selected_nodes.size() > 0:
 		var enemy := _find_enemy_at(world_position)
 		if enemy != null:
-			_selected_structure.set_priority_target(enemy)
-			_status_text = "%s 已优先锁定 %s。" % [_selected_structure.get_display_name(), str(enemy.definition.get("name", "敌人"))]
+			var assigned := 0
+			for node in _selected_nodes:
+				if is_instance_valid(node) and (node is DefenseStructure or node is AllyUnit):
+					node.set_priority_target(enemy)
+					assigned += 1
+			_status_text = "已为 %d 个选中目标指定优先攻击 %s。" % [assigned, str(enemy.definition.get("name", "敌人"))]
 			_refresh_hud()
 			return
-		_clear_structure_selection()
+		_clear_selection()
+		_refresh_hud()
 		return
 	if is_instance_valid(_hero):
 		_hero.set_move_target(world_position)
 		_status_text = "琪露诺正在赶路。"
 		_notify_tutorial("move")
+		_refresh_hud()
+
+
+func _pick_up_drop(world_position: Vector2) -> bool:
+	var nearest_drop: EnchantDrop = null
+	var nearest_distance := 40.0
+	for drop_node in drops.get_children():
+		var drop := drop_node as EnchantDrop
+		if drop == null or not is_instance_valid(drop):
+			continue
+		var distance := world_position.distance_to(drop.global_position)
+		if distance <= nearest_distance:
+			nearest_drop = drop
+			nearest_distance = distance
+	if nearest_drop == null:
+		return false
+	ice_crystals += nearest_drop.shards
+	nearest_drop.queue_free()
+	_status_text = "拾取了冰晶附魔（+%d 冰晶）。" % nearest_drop.shards
+	if phase == Phase.COMBAT and not _enchant_open:
+		_begin_enchant_choice()
+	else:
+		_refresh_hud()
+	return true
 
 
 func _on_build_item_selected(build_id: String) -> void:
 	if not BuildCatalog.ORDER.has(build_id):
 		return
 	_selected_build_id = build_id
-	_clear_structure_selection()
+	_clear_selection()
 	var definition := BuildCatalog.get_definition(build_id)
 	_status_text = "已选择 %s，点击草地格部署。" % str(definition.get("name", build_id))
 	_refresh_hud()
@@ -230,6 +411,12 @@ func _try_build_structure(cell: Vector2i) -> void:
 	var cost := _get_build_cost(definition)
 	if frost < float(cost):
 		_status_text = "冻气不足，还需要 %d。" % int(ceil(float(cost) - frost))
+		_refresh_hud()
+		return
+	var footprint := _get_footprint_cells(_selected_build_id, cell)
+	if not _footprint_valid(footprint):
+		_status_text = "该区域无法建造：需避开道路、IQ 结晶与其他建筑。"
+		_refresh_hud()
 		return
 
 	var structure: DefenseStructure
@@ -243,7 +430,8 @@ func _try_build_structure(cell: Vector2i) -> void:
 	structure.setup(self, definition)
 	structure.destroyed.connect(_on_structure_destroyed)
 	_sync_structure_modifiers(structure)
-	_structure_cells[cell] = structure
+	for footprint_cell in footprint:
+		_structure_cells[footprint_cell] = structure
 	frost -= float(cost)
 	spawn_hit_effect(structure.global_position, Color("#bdf6ff"), 38.0)
 	_status_text = "%s 部署完成。" % structure.get_display_name()
@@ -251,29 +439,107 @@ func _try_build_structure(cell: Vector2i) -> void:
 	_refresh_hud()
 
 
-func _select_structure(structure: DefenseStructure) -> void:
-	if _selected_structure != null and is_instance_valid(_selected_structure):
-		_selected_structure.set_selected(false)
-	_selected_structure = structure
-	_selected_structure.set_selected(true)
-	hud.show_structure_detail(_selected_structure)
-	_status_text = "选中 %s，右键可指定优先攻击目标。" % structure.get_display_name()
+## 需求 6：返回某类建筑在锚点处的完整占地格集合。
+func _get_footprint_cells(build_id: String, anchor: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if BuildCatalog.is_barracks(build_id):
+		for dy in range(-BARRACKS_HALF_CELLS, BARRACKS_HALF_CELLS + 1):
+			for dx in range(-BARRACKS_HALF_CELLS, BARRACKS_HALF_CELLS + 1):
+				cells.append(anchor + Vector2i(dx, dy))
+	else:
+		for offset in TOWER_FOOTPRINT:
+			cells.append(anchor + offset)
+	return cells
+
+
+func _footprint_valid(cells: Array[Vector2i]) -> bool:
+	for cell in cells:
+		if not map_view.is_buildable(cell):
+			return false
+		if _structure_cells.has(cell):
+			return false
+	return true
+
+
+func _set_selection(nodes: Array) -> void:
+	for node in _selected_nodes:
+		if is_instance_valid(node) and node.has_method("set_selected"):
+			node.set_selected(false)
+	_selected_nodes = []
+	for node in nodes:
+		if node != null and is_instance_valid(node):
+			_selected_nodes.append(node)
+			if node.has_method("set_selected"):
+				node.set_selected(true)
+	_sync_selection_ui()
+
+
+func _clear_selection() -> void:
+	_set_selection([])
+
+
+func _remove_from_selection(node: Node) -> void:
+	if _selected_nodes.has(node):
+		_selected_nodes.erase(node)
+		_sync_selection_ui()
+
+
+func _sync_selection_ui() -> void:
+	var structure: DefenseStructure = null
+	for node in _selected_nodes:
+		if node is DefenseStructure and is_instance_valid(node):
+			structure = node as DefenseStructure
+			break
+	if structure != null and _selected_nodes.size() == 1:
+		_selected_structure = structure
+		hud.show_structure_detail(structure)
+	else:
+		if _selected_structure != null:
+			_selected_structure = null
+			hud.clear_structure_detail()
+
+
+## 需求 10：左键框选友军与防御塔。
+func _select_objects_in_rect(rect: Rect2) -> void:
+	var nodes: Array[Node2D] = []
+	for structure_node in get_tree().get_nodes_in_group("structures"):
+		var structure := structure_node as DefenseStructure
+		if structure != null and is_instance_valid(structure) and rect.has_point(structure.global_position):
+			nodes.append(structure)
+	for ally_node in get_tree().get_nodes_in_group("allies"):
+		var ally := ally_node as AllyUnit
+		if ally != null and is_instance_valid(ally) and ally.is_alive() and rect.has_point(ally.global_position):
+			nodes.append(ally)
+	if is_instance_valid(_hero) and _hero.is_alive() and rect.has_point(_hero.global_position):
+		nodes.append(_hero)
+	_set_selection(nodes)
+	if nodes.size() > 0:
+		_status_text = "已框选 %d 个目标，右键妖精可指定优先攻击。" % nodes.size()
+	else:
+		_status_text = "框选区域没有友方单位。"
 	_refresh_hud()
 
 
-func _clear_structure_selection() -> void:
-	if _selected_structure != null and is_instance_valid(_selected_structure):
-		_selected_structure.set_selected(false)
-	_selected_structure = null
-	hud.clear_structure_detail()
-	_refresh_hud()
+func _find_ally_at(world_position: Vector2) -> AllyUnit:
+	var nearest: AllyUnit = null
+	var nearest_distance := 22.0
+	for ally_node in get_tree().get_nodes_in_group("allies"):
+		var ally := ally_node as AllyUnit
+		if ally == null or not is_instance_valid(ally) or not ally.is_alive():
+			continue
+		var distance := world_position.distance_to(ally.global_position)
+		if distance <= nearest_distance:
+			nearest = ally
+			nearest_distance = distance
+	return nearest
 
 
 func _find_structure_at(cell: Vector2i) -> DefenseStructure:
 	var structure = _structure_cells.get(cell, null)
 	if structure != null and is_instance_valid(structure):
 		return structure
-	_structure_cells.erase(cell)
+	if structure == null:
+		_structure_cells.erase(cell)
 	return null
 
 
@@ -295,7 +561,7 @@ func _on_structure_destroyed(structure: DefenseStructure) -> void:
 	for cell in _structure_cells.keys():
 		if _structure_cells[cell] == structure:
 			_structure_cells.erase(cell)
-			break
+	_remove_from_selection(structure)
 	if _selected_structure == structure:
 		_selected_structure = null
 		hud.clear_structure_detail()
@@ -338,7 +604,6 @@ func _on_spawn_requested(enemy_id: String, hp_scale: float, entrance_id: String)
 
 func _on_enemy_defeated(_enemy: FairyEnemy, reward: int, shards: int, world_position: Vector2) -> void:
 	frost += float(reward)
-	ice_crystals += shards
 	kill_count += 1
 	total_kills += 1
 	spawn_hit_effect(world_position, Color("#9affc9"), 24.0)
@@ -346,8 +611,16 @@ func _on_enemy_defeated(_enemy: FairyEnemy, reward: int, shards: int, world_posi
 		_hero.trigger_baka_passive()
 		_status_text = "笨蛋寒气失控，周围全体减速！"
 	_wave_manager.notify_enemy_finished()
-	if shards > 0 and phase == Phase.COMBAT and not _enchant_open:
-		_begin_enchant_choice()
+	# 需求 8：精英不再直接弹窗，改为掉落物，左键拾取后触发附魔。
+	if shards > 0 and phase == Phase.COMBAT:
+		_spawn_enchant_drop(world_position, shards)
+
+
+func _spawn_enchant_drop(world_position: Vector2, shards: int) -> void:
+	var drop: EnchantDrop = EnchantDropScript.new()
+	drops.add_child(drop)
+	drop.global_position = world_position
+	drop.setup(shards)
 
 
 func _on_enemy_reached_core(enemy: FairyEnemy, leak_damage: int) -> void:
@@ -375,6 +648,7 @@ func _damage_hero(amount: float, message: String) -> void:
 		_finish_defeat()
 
 
+## 需求 5：波末结算 —— 计算本波金钱收益，兵种随后自动回到出生兵营驻扎。
 func _on_wave_finished(index: int) -> void:
 	if phase == Phase.FINISHED:
 		return
@@ -382,10 +656,21 @@ func _on_wave_finished(index: int) -> void:
 		_finish_victory()
 		return
 
-	frost += 16.0 + index * 4.0
+	var income := 16.0 + index * 4.0
+	frost += income
 	ice_crystals += 1
+	phase = Phase.SETTLEMENT
+	_status_text = "守住第 %d 波，正在结算……" % (index + 1)
+	hud.show_settlement(index + 1, int(income))
+	_refresh_hud()
+
+
+func _on_settlement_continue_requested() -> void:
+	if phase != Phase.SETTLEMENT:
+		return
 	phase = Phase.UPGRADE
-	_status_text = "守住第 %d 波。选择一项笨蛋灵感。" % (index + 1)
+	_status_text = "选择一项笨蛋灵感。"
+	hud.hide_settlement()
 	hud.show_modifier_choices("blessing", "笨蛋灵感", "选择一项全局祝福，然后进入下一波。", _upgrade_manager.get_choices("blessing"))
 	_refresh_hud()
 
@@ -505,6 +790,8 @@ func _refresh_hud() -> void:
 	match phase:
 		Phase.COMBAT:
 			phase_text = "交战"
+		Phase.SETTLEMENT:
+			phase_text = "结算"
 		Phase.UPGRADE:
 			phase_text = "选择祝福"
 		Phase.ENCHANT:

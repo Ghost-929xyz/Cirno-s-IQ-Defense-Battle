@@ -7,23 +7,30 @@
 [node name="FogLakeLevel" type="Node2D"]
 script = ExtResource("1_game")
 
-[node name="MapView" type="Node2D" parent="."]
-position = Vector2(32, 56)
+[node name="World" type="Node2D" parent="."]
+
+[node name="MapView" type="Node2D" parent="World"]
+position = Vector2(32, 80)
 script = ExtResource("2_map")
 
-[node name="Towers" type="Node2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="World"]
+position = Vector2(620, 380)
 
-[node name="Barracks" type="Node2D" parent="."]
+[node name="Towers" type="Node2D" parent="World"]
 
-[node name="Allies" type="Node2D" parent="."]
+[node name="Barracks" type="Node2D" parent="World"]
 
-[node name="Hero" type="Node2D" parent="."]
+[node name="Allies" type="Node2D" parent="World"]
 
-[node name="Enemies" type="Node2D" parent="."]
+[node name="Hero" type="Node2D" parent="World"]
 
-[node name="Projectiles" type="Node2D" parent="."]
+[node name="Enemies" type="Node2D" parent="World"]
 
-[node name="Effects" type="Node2D" parent="."]
+[node name="Projectiles" type="Node2D" parent="World"]
+
+[node name="Effects" type="Node2D" parent="World"]
+
+[node name="Drops" type="Node2D" parent="World"]
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("3_hud")

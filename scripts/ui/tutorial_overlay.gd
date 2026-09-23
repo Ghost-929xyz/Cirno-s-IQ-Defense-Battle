@@ -115,7 +115,7 @@ func _build_welcome() -> void:
 
 func _build_banner() -> void:
 	_banner = Panel.new()
-	_banner.position = Vector2(32.0, 6.0)
+	_banner.position = Vector2(32.0, 78.0)
 	_banner.size = Vector2(720.0, 46.0)
 	_banner.visible = false
 	_banner.add_theme_stylebox_override("panel", _panel_style(Color("#0d2a40"), Color("#8fe8ff")))

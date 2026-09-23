@@ -5,16 +5,27 @@ signal defeated(unit: AllyUnit)
 
 const ProjectileScript = preload("res://scripts/entities/projectile.gd")
 
+## 索敌范围：大图上兵种只追击兵营附近的目标，防止跑到地图另一端。
+const AGGRO_RANGE := 150.0
+## 需求 5：兵种回到出生兵营附近 7×7 格范围内驻扎（锚点 ±3 格）。
+const GARRISON_HALF_CELLS := 3
+
 var definition: Dictionary = {}
 var max_hp := 1.0
 var current_hp := 1.0
 
+var home_barracks: Node2D
 var _owner_game: Node
 var _target: FairyEnemy
+var _priority_target: FairyEnemy
 var _attack_cooldown := 0.0
 var _flash_remaining := 0.0
 var _bob_time := 0.0
 var _active := false
+var _selected := false
+var _garrison_anchor := Vector2.INF
+var _garrison_spot := Vector2.INF
+
 var _damage_multiplier := 1.0
 var _attack_speed_multiplier := 1.0
 var _health_multiplier := 1.0
@@ -35,6 +46,32 @@ func setup(owner_game: Node, unit_definition: Dictionary, spawn_position: Vector
 	queue_redraw()
 
 
+## 记录出生兵营，作为波末回营的锚点（需求 5）。
+func set_home(barracks: Node2D) -> void:
+	home_barracks = barracks
+	if barracks != null and is_instance_valid(barracks):
+		_garrison_anchor = barracks.global_position
+	_pick_garrison_spot()
+
+
+func set_garrison(anchor_world: Vector2) -> void:
+	_garrison_anchor = anchor_world
+	_pick_garrison_spot()
+
+
+func _pick_garrison_spot() -> void:
+	if not _garrison_anchor.is_finite():
+		return
+	var cell_size := 8.0
+	if _owner_game != null and _owner_game.has_method("get_cell_size"):
+		cell_size = float(_owner_game.call("get_cell_size"))
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var dx := rng.randi_range(-GARRISON_HALF_CELLS, GARRISON_HALF_CELLS)
+	var dy := rng.randi_range(-GARRISON_HALF_CELLS, GARRISON_HALF_CELLS)
+	_garrison_spot = _garrison_anchor + Vector2(dx * cell_size, dy * cell_size)
+
+
 func update_modifiers(modifiers: Dictionary) -> void:
 	_damage_multiplier = float(modifiers.get("ally_damage_multiplier", 1.0))
 	_attack_speed_multiplier = float(modifiers.get("ally_attack_speed_multiplier", 1.0))
@@ -42,6 +79,17 @@ func update_modifiers(modifiers: Dictionary) -> void:
 	max_hp = float(definition.get("max_hp", 80.0)) * _health_multiplier
 	current_hp = minf(current_hp if current_hp > 0.0 else max_hp, max_hp)
 	queue_redraw()
+
+
+func set_selected(value: bool) -> void:
+	_selected = value
+	queue_redraw()
+
+
+## 需求 10：主动指定攻击目标。
+func set_priority_target(target: Node2D) -> void:
+	if target is FairyEnemy:
+		_priority_target = target as FairyEnemy
 
 
 func _process(delta: float) -> void:
@@ -53,9 +101,18 @@ func _process(delta: float) -> void:
 		_flash_remaining = maxf(0.0, _flash_remaining - delta)
 		queue_redraw()
 
-	if not is_instance_valid(_target) or not _target.is_alive():
+	# 需求 5：非交战阶段（结算/祝福/准备）返回兵营附近驻扎。
+	if not _is_combat():
+		_target = null
+		_return_to_garrison(delta)
+		return
+
+	if is_instance_valid(_priority_target) and _priority_target.is_alive():
+		_target = _priority_target
+	elif not is_instance_valid(_target) or not _target.is_alive():
 		_target = _find_target()
 	if not is_instance_valid(_target):
+		_return_to_garrison(delta, true)
 		return
 
 	var offset := _target.global_position - global_position
@@ -67,6 +124,27 @@ func _process(delta: float) -> void:
 	elif _attack_cooldown <= 0.0:
 		_attack_target()
 		_attack_cooldown = float(definition.get("attack_interval", 1.0)) / _attack_speed_multiplier
+
+
+func _is_combat() -> bool:
+	if _owner_game == null:
+		return true
+	if _owner_game.has_method("is_combat"):
+		return bool(_owner_game.call("is_combat"))
+	return true
+
+
+func _return_to_garrison(delta: float, gentle: bool = false) -> void:
+	if not _garrison_spot.is_finite():
+		if _garrison_anchor.is_finite():
+			_pick_garrison_spot()
+		else:
+			return
+	var offset := _garrison_spot - global_position
+	if offset.length() <= 4.0:
+		return
+	var speed := (64.0 if gentle else 120.0)
+	global_position += offset.normalized() * minf(offset.length(), speed * delta)
 
 
 func take_damage(raw_damage: float) -> void:
@@ -86,13 +164,13 @@ func is_alive() -> bool:
 
 func _find_target() -> FairyEnemy:
 	var nearest: FairyEnemy = null
-	var nearest_distance := INF
+	var nearest_distance := AGGRO_RANGE
 	for enemy_node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := enemy_node as FairyEnemy
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
 		var distance := global_position.distance_to(enemy.global_position)
-		if distance < nearest_distance:
+		if distance <= nearest_distance:
 			nearest = enemy
 			nearest_distance = distance
 	return nearest
@@ -130,6 +208,10 @@ func _die() -> void:
 
 
 func _draw() -> void:
+	if _selected:
+		draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 32, Color(0.45, 0.96, 1.0, 0.9), 2.0)
+		draw_circle(Vector2.ZERO, 17.0, Color(0.45, 0.96, 1.0, 0.07))
+
 	var color := Color(str(definition.get("color", "#82d7ee")))
 	if _flash_remaining > 0.0:
 		color = color.lerp(Color.WHITE, 0.72)
