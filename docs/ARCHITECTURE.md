@@ -30,8 +30,8 @@ MainMenu (menu.tscn / main_menu.gd)     开始菜单，change_scene_to_file 进�
 
 FogLakeLevel (main.tscn / game.gd)
 ├── World (Node2D 世界容器)
-│   ├── MapView             256×192 格、8px、四条弯曲样条路径、IQ 结晶、框选矩形
-│   ├── Camera2D            居中相机（地图远超窗口，配合缩放与拖动）
+│   ├── MapView             20×15 格、30px、四条弯曲样条路径、IQ 结晶、框选矩形
+
 │   ├── Towers              CirnoTower 实例
 │   ├── Barracks            FairyBarracks 实例
 │   ├── Allies              AllyUnit 实例
@@ -83,8 +83,8 @@ HUD 是 CanvasLayer，全部控件由代码构建，包含：
 
 ### LakeMapView
 
-- 256 × 192 像素格、每格 8 像素，生成路径格、草地格和可玩矩形。
-- `PATHS`：四条沿 Catmull-Rom 样条蜿蜒的弯曲路径，全部汇向 `CORE_CELL(224, 96)`；路宽约 5 格，路线深色、空地无色。
+- 20 × 15 像素格、每格 30 像素（整图 600 × 450，单屏适配、无镜头），生成路径格、草地格和可玩矩形。
+- `PATHS`：四条沿 Catmull-Rom 样条蜿蜒的弯曲路径，全部汇向 `CORE_CELL(10, 7)`；路宽约 1-2 格，路线深色、空地无色。
 - 提供 `world_to_cell`、`is_buildable`（路线 / 核心 / 入口不可建）、`has_entrance`、`get_path_points(entrance_id)`、`get_core_world_position`。
 - 提供 `get_closest_path_world_position`，跨所有路径供兵营确定单位出生点。
 - 绘制四向出生裂缝、IQ 结晶、建造悬停状态与框选矩形。
@@ -106,7 +106,7 @@ HUD 是 CanvasLayer，全部控件由代码构建，包含：
 
 - 占地 3×3（需求 6），只在交战阶段工作。
 - 维护存活己方兵种并限制召唤上限。
-- 通过 `FogLakeLevel.spawn_ally` 创建单位；波末结算后存活单位回到出生点附近 7×7 像素内驻扎（需求 5）。
+- 通过 `FogLakeLevel.spawn_ally` 创建单位；波末结算后存活单位回到出生点附近 7×7 格内驻扎（需求 5）。
 
 ### CirnoHero
 
@@ -219,3 +219,4 @@ godot --headless --path . --script .tools/settlement_test.gd # 波末结算 -> �
 `smoke_test` 会实例化主场景，建造一座冰锥塔和一座冰晶兵营，开始第 1 波，等待妖精与己方兵种生成，然后释放 Q/R。`ui_test` 额外校验菜单场景、四条入口路径、波次数据中的 `entrance` 合法性以及引导推进。`battle_test` 从四个入口混编增兵，验证塔、兵营、英雄技能与漏怪扣除琪露诺生命全链路无报错。`settlement_test` 驱动 `_on_wave_finished → SETTLEMENT → _on_settlement_continue_requested → UPGRADE(祝福三选一) → PREP` 全链路。
 
 窗口截图验证（需要真实渲染）由 `.tools/screenshot.gd` 提供，输出到 `%TEMP%/gamemakers_shots/`。
+

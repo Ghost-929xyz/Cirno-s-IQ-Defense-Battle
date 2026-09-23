@@ -1,17 +1,17 @@
 class_name LakeMapView
 extends Node2D
 
-## 大地图视图：256x192 高密度网格 + 四条弯曲出兵路径。
-## 所有棋盘坐标以「格」为单位，世界坐标通过 cell_to_local / to_global 换算。
-## 绘制仅使用少数大矩形与折线，避免逐格绘制 49k 个格子，保证大图性能。
+## 地图视图：20×15 中等密度网格 + 四条弯曲出兵路径。
+## 棋盘坐标以「格」为单位；本地/世界像素坐标通过 cell_to_local / to_global 换算。
+## 绘制仅使用少量大矩形与折线，避免逐格绘制大量格子，保证性能。
 
-const COLS := 256
-const ROWS := 192
-const CELL_SIZE := 8.0
+const COLS := 20
+const ROWS := 15
+const CELL_SIZE := 30.0
 const BOARD_SIZE := Vector2(COLS * CELL_SIZE, ROWS * CELL_SIZE)
 
-const CORE_CELL := Vector2i(224, 96)
-const HERO_SPAWN_CELL := Vector2i(28, 168)
+const CORE_CELL := Vector2i(10, 7)
+const HERO_SPAWN_CELL := Vector2i(1, 12)
 const DEFAULT_ENTRANCE := "west"
 const ENTRANCE_LABELS := {
 	"west": "西",
@@ -19,58 +19,30 @@ const ENTRANCE_LABELS := {
 	"south": "南",
 	"east": "东",
 }
-## 每条路从边界入口蜿蜒汇向核心（CORE_CELL）。路宽约 5 格。
-const PATH_HALF_WIDTH := 2.5
+## 每条路从边界入口蜿蜒汇向核心（CORE_CELL），经 Catmull-Rom 平滑成弯曲曲线。
+## 路宽约 2 格（1 格半宽），保证空地留有充足的建造区域。
+const PATH_HALF_WIDTH := 0.9
 const PATH_SEGMENT_CELLS := 1.0
 
 ## 各入口的路径关键点（格坐标），会经 Catmull-Rom 平滑成弯曲曲线。
 const PATHS := {
 	"west": [
-		Vector2i(4, 108),
-		Vector2i(52, 108),
-		Vector2i(52, 56),
-		Vector2i(100, 56),
-		Vector2i(100, 120),
-		Vector2i(156, 120),
-		Vector2i(156, 62),
-		Vector2i(208, 62),
-		Vector2i(208, 102),
-		Vector2i(224, 96),
+		Vector2i(0, 7), Vector2i(3, 7), Vector2i(3, 4), Vector2i(6, 4),
+		Vector2i(6, 7), Vector2i(10, 7),
 	],
 	"north": [
-		Vector2i(120, 4),
-		Vector2i(120, 44),
-		Vector2i(64, 44),
-		Vector2i(64, 92),
-		Vector2i(112, 92),
-		Vector2i(112, 140),
-		Vector2i(168, 140),
-		Vector2i(168, 96),
-		Vector2i(224, 96),
+		Vector2i(10, 0), Vector2i(10, 3), Vector2i(8, 3), Vector2i(8, 5),
+		Vector2i(10, 7),
 	],
 	"south": [
-		Vector2i(148, 187),
-		Vector2i(148, 148),
-		Vector2i(196, 148),
-		Vector2i(196, 108),
-		Vector2i(156, 108),
-		Vector2i(156, 70),
-		Vector2i(196, 70),
-		Vector2i(196, 96),
-		Vector2i(224, 96),
+		Vector2i(3, 14), Vector2i(3, 11), Vector2i(6, 11), Vector2i(6, 8),
+		Vector2i(10, 7),
 	],
 	"east": [
-		Vector2i(251, 84),
-		Vector2i(212, 84),
-		Vector2i(212, 44),
-		Vector2i(168, 44),
-		Vector2i(168, 88),
-		Vector2i(168, 126),
-		Vector2i(206, 126),
-		Vector2i(224, 96),
+		Vector2i(19, 7), Vector2i(16, 7), Vector2i(16, 4), Vector2i(13, 4),
+		Vector2i(13, 7), Vector2i(10, 7),
 	],
 }
-
 var hover_cell := Vector2i(-99, -99)
 var selected_tower_id := "icicle"
 var _path_cells: Dictionary = {}
@@ -107,10 +79,11 @@ func _build_paths() -> void:
 		_path_world_points[entrance_id] = world
 
 
+## 路径关键点从格坐标换算为本地像素坐标（格中心），供样条/绘制/移动使用。
 func _to_float_points(cells: Array) -> Array[Vector2]:
 	var result: Array[Vector2] = []
 	for cell in cells:
-		result.append(Vector2(cell))
+		result.append(cell_to_local(Vector2i(cell)))
 	return result
 
 
@@ -144,10 +117,11 @@ func _sample_catmull_rom(points: Array[Vector2], samples_per_cell: float = 2.0) 
 	return result
 
 
+## 把像素采样点落格，标记为不可建造的路径格。
 func _rasterize_path(samples: PackedVector2Array) -> void:
 	var radius := int(ceil(PATH_HALF_WIDTH))
 	for sample in samples:
-		var center := Vector2i(int(round(sample.x)), int(round(sample.y)))
+		var center := Vector2i(int(floor(sample.x / CELL_SIZE)), int(floor(sample.y / CELL_SIZE)))
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				if float(dx * dx + dy * dy) <= PATH_HALF_WIDTH * PATH_HALF_WIDTH:
@@ -269,12 +243,12 @@ func distance_in_cells(a: Vector2, b: Vector2) -> float:
 
 
 func _draw() -> void:
-	# 边框与空地底色（空地保持空旷深色）
-	draw_rect(Rect2(Vector2(-8.0, -8.0), BOARD_SIZE + Vector2(16.0, 16.0)), Color("#050d18"))
-	draw_rect(Rect2(Vector2.ZERO, BOARD_SIZE), Color("#0f2734"))
+	# 外框与空地底色（空地保持简洁素色，不装饰）
+	draw_rect(Rect2(Vector2(-6.0, -6.0), BOARD_SIZE + Vector2(12.0, 12.0)), Color("#050d18"))
+	draw_rect(Rect2(Vector2.ZERO, BOARD_SIZE), Color("#17313a"))
 
-	# 高密度网格线（提升像素密度感）
-	var grid_color := Color(0.5, 0.78, 0.95, 0.045)
+	# 细网格线（提升像素密度感）
+	var grid_color := Color(0.55, 0.82, 0.95, 0.06)
 	for x in range(COLS + 1):
 		var px := x * CELL_SIZE
 		draw_line(Vector2(px, 0.0), Vector2(px, BOARD_SIZE.y), grid_color, 1.0)
@@ -282,11 +256,11 @@ func _draw() -> void:
 		var py := y * CELL_SIZE
 		draw_line(Vector2(0.0, py), Vector2(BOARD_SIZE.x, py), grid_color, 1.0)
 
-	# 深色弯曲路径：深色宽底 + 较亮内线
+	# 深色弯曲路径：深色宽底 + 较亮内线，与空地形成对比
 	for entrance_id in _path_local_points:
 		var points := _path_local_points[entrance_id] as PackedVector2Array
-		draw_polyline(points, Color("#141f2c"), PATH_HALF_WIDTH * 2.0 * CELL_SIZE, true)
-		draw_polyline(points, Color("#2c4759"), 1.4 * CELL_SIZE, true)
+		draw_polyline(points, Color("#0a131d"), PATH_HALF_WIDTH * 2.0 * CELL_SIZE, true)
+		draw_polyline(points, Color("#3d6a80"), 1.1 * CELL_SIZE, true)
 
 	_draw_spawn_and_core()
 	_draw_hover()
@@ -300,19 +274,19 @@ func _draw_spawn_and_core() -> void:
 		var spawn := cell_to_local(nodes[0])
 		var direction := (cell_to_local(nodes[1]) - spawn).normalized()
 		var angle := direction.angle()
-		var marker_radius := 2.2 * CELL_SIZE
+		var marker_radius := 0.85 * CELL_SIZE
 		draw_circle(spawn, marker_radius, Color(0.18, 0.85, 1.0, 0.16))
 		draw_arc(spawn, marker_radius * 0.9, angle - 1.1, angle + 1.1, 24, Color("#9cecff"), 2.0)
-		var label_position := spawn + direction * (marker_radius * 2.2)
+		var label_position := spawn + direction * (marker_radius * 1.9)
 		draw_string(font, label_position + Vector2(-10.0, 5.0), str(ENTRANCE_LABELS.get(entrance_id, "?")), HORIZONTAL_ALIGNMENT_CENTER, 30.0, 12, Color("#dcf8ff"))
 
 	var core_position := cell_to_local(CORE_CELL)
-	var core_radius := 3.0 * CELL_SIZE
+	var core_radius := 1.0 * CELL_SIZE
 	draw_circle(core_position, core_radius, Color("#9eeeff"))
 	draw_circle(core_position, core_radius * 0.72, Color("#2faee0"))
 	draw_line(core_position + Vector2(-core_radius * 0.55, 0), core_position + Vector2(core_radius * 0.55, 0), Color("#effcff"), 2.0)
 	draw_line(core_position + Vector2(0, -core_radius * 0.55), core_position + Vector2(0, core_radius * 0.55), Color("#effcff"), 2.0)
-	draw_string(font, core_position + Vector2(-24.0, core_radius + 16.0), "IQ 结晶", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#dcf8ff"))
+	draw_string(font, core_position + Vector2(-24.0, core_radius + 14.0), "IQ 结晶", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#dcf8ff"))
 
 
 func _draw_hover() -> void:
@@ -323,7 +297,7 @@ func _draw_hover() -> void:
 	draw_rect(rect, Color(valid_color.r, valid_color.g, valid_color.b, 0.30))
 	draw_rect(rect, valid_color, false, 1.5)
 	var center := cell_to_local(hover_cell)
-	draw_arc(center, CELL_SIZE * 1.9, 0.0, TAU, 24, Color(valid_color.r, valid_color.g, valid_color.b, 0.7), 1.5)
+	draw_arc(center, CELL_SIZE * 0.95, 0.0, TAU, 24, Color(valid_color.r, valid_color.g, valid_color.b, 0.7), 1.5)
 
 
 func _draw_selection() -> void:

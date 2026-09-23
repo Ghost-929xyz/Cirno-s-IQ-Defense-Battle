@@ -37,7 +37,6 @@ enum Phase {
 }
 
 @onready var map_view: LakeMapView = $World/MapView
-@onready var camera: Camera2D = $World/Camera2D
 @onready var towers: Node2D = $World/Towers
 @onready var barracks_container: Node2D = $World/Barracks
 @onready var allies: Node2D = $World/Allies
@@ -63,16 +62,9 @@ var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _structure_cells: Dictionary = {}
 var _selected_nodes: Array[Node2D] = []
-var _status_text := "右键移动琪露诺；左键建造或框选；WASD/方向键与滚轮移动镜头。"
+var _status_text := "右键移动琪露诺；左键建造或框选。"
 var _enchant_open := false
 
-# 镜头控制（需求 1/2）
-var _camera_pan_speed := 820.0
-var _camera_min_zoom := 0.55
-var _camera_max_zoom := 1.8
-var _camera_edge := 30.0
-
-# 左键拖拽/框选（需求 10）
 var _drag_start_screen := Vector2.ZERO
 var _drag_start_world := Vector2.ZERO
 var _is_dragging := false
@@ -100,10 +92,6 @@ func _ready() -> void:
 	_setup_tutorial()
 	_spawn_hero()
 	hud.select_build_item(_selected_build_id)
-	# 初始镜头对准棋盘中心，让玩家看到四条路的走向
-	if camera != null:
-		camera.position = map_view.position + map_view.get_board_rect_local().get_center()
-		_clamp_camera()
 	_refresh_hud()
 
 
@@ -126,64 +114,7 @@ func _process(delta: float) -> void:
 		frost += PREP_FROST_PER_SECOND * float(_upgrade_manager.modifiers.get("frost_regen_multiplier", 1.0)) * delta
 		if is_instance_valid(_hero):
 			_hero.regen(delta)
-	_process_camera(delta)
 	_refresh_hud()
-
-
-func _process_camera(delta: float) -> void:
-	if camera == null:
-		return
-	var pan := Vector2.ZERO
-	if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
-		pan.x -= 1.0
-	if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
-		pan.x += 1.0
-	if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
-		pan.y -= 1.0
-	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
-		pan.y += 1.0
-	if get_viewport().has_focus():
-		var viewport_size := get_viewport().get_visible_rect().size
-		var mouse := get_viewport().get_mouse_position()
-		if mouse.x < _camera_edge:
-			pan.x -= 1.0
-		elif mouse.x > viewport_size.x - _camera_edge:
-			pan.x += 1.0
-		if mouse.y < _camera_edge:
-			pan.y -= 1.0
-		elif mouse.y > viewport_size.y - _camera_edge:
-			pan.y += 1.0
-	if pan.length() > 0.0:
-		camera.position += pan.normalized() * _camera_pan_speed * delta / camera.zoom.x
-		_clamp_camera()
-
-
-func _clamp_camera() -> void:
-	if camera == null:
-		return
-	var viewport_size := get_viewport().get_visible_rect().size
-	var half := viewport_size * 0.5 / camera.zoom
-	var board := Rect2(map_view.position, map_view.get_board_rect_local().size)
-	var min_x := board.position.x + half.x
-	var max_x := board.end.x - half.x
-	var min_y := board.position.y + half.y
-	var max_y := board.end.y - half.y
-	camera.position.x = board.get_center().x if max_x < min_x else clampf(camera.position.x, min_x, max_x)
-	camera.position.y = board.get_center().y if max_y < min_y else clampf(camera.position.y, min_y, max_y)
-
-
-func _zoom_camera(factor: float) -> void:
-	if camera == null:
-		return
-	var new_zoom := clampf(camera.zoom.x * factor, _camera_min_zoom, _camera_max_zoom)
-	if is_equal_approx(new_zoom, camera.zoom.x):
-		return
-	var viewport_size := get_viewport().get_visible_rect().size
-	var mouse_screen := get_viewport().get_mouse_position()
-	var before := camera.position + (mouse_screen - viewport_size * 0.5) / camera.zoom
-	camera.zoom = Vector2(new_zoom, new_zoom)
-	camera.position = before - (mouse_screen - viewport_size * 0.5) / camera.zoom
-	_clamp_camera()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -199,12 +130,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_zoom_camera(1.12)
-			return
-		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_zoom_camera(0.893)
-			return
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				_begin_left_drag()

@@ -62,7 +62,7 @@ func set_garrison(anchor_world: Vector2) -> void:
 func _pick_garrison_spot() -> void:
 	if not _garrison_anchor.is_finite():
 		return
-	var cell_size := 8.0
+	var cell_size := 30.0
 	if _owner_game != null and _owner_game.has_method("get_cell_size"):
 		cell_size = float(_owner_game.call("get_cell_size"))
 	var rng := RandomNumberGenerator.new()

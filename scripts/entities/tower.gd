@@ -45,7 +45,7 @@ func get_detail_text() -> String:
 		int(ceil(current_hp)),
 		int(max_hp),
 		int(round(float(definition.get("current_damage", 0.0)))),
-		range_pixels / 60.0,
+		range_pixels / 30.0,
 		attack_interval,
 	]
 
@@ -61,7 +61,7 @@ func _apply_modifiers(modifiers: Dictionary) -> void:
 func _recalculate_stats() -> void:
 	super._recalculate_stats()
 	max_hp *= _health_multiplier
-	range_pixels = float(definition.get("range_cells", 2.5)) * 60.0 * (1.0 + (level - 1) * 0.08)
+	range_pixels = float(definition.get("range_cells", 2.5)) * 30.0 * (1.0 + (level - 1) * 0.08)
 	var damage := float(definition.get("damage", 10.0)) * (1.0 + (level - 1) * 0.34) * _damage_multiplier
 	attack_interval = float(definition.get("cooldown", 1.0)) / (1.0 + (level - 1) * 0.12) / _attack_speed_multiplier
 	fire_cooldown = minf(fire_cooldown, attack_interval)
