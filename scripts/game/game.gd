@@ -7,8 +7,9 @@ const EnemyScript = preload("res://scripts/entities/enemy.gd")
 const AllyScript = preload("res://scripts/entities/ally_unit.gd")
 const HeroScript = preload("res://scripts/entities/hero.gd")
 const HitEffectScript = preload("res://scripts/effects/hit_effect.gd")
+const TutorialOverlayScript = preload("res://scripts/ui/tutorial_overlay.gd")
+const SessionScript = preload("res://scripts/autoload/session.gd")
 
-const IQ_START := 20
 const FROST_START := 180.0
 const PREP_FROST_PER_SECOND := 5.0
 
@@ -31,8 +32,6 @@ enum Phase {
 @onready var hud: BattleHUD = $HUD
 
 var phase := Phase.PREP
-var iq := IQ_START
-var max_iq := IQ_START
 var frost := FROST_START
 var ice_crystals := 0
 var wave_index := -1
@@ -42,6 +41,7 @@ var total_kills := 0
 var _wave_manager: WaveManager
 var _upgrade_manager: UpgradeManager
 var _hero: CirnoHero
+var _tutorial: CanvasLayer
 var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _structure_cells: Dictionary = {}
@@ -64,19 +64,39 @@ func _ready() -> void:
 	hud.modifier_card_selected.connect(_on_modifier_card_selected)
 	hud.hero_skill_requested.connect(_on_hero_skill_requested)
 	hud.restart_requested.connect(_on_restart_requested)
+	hud.menu_requested.connect(_on_menu_requested)
 
+	_setup_tutorial()
 	_spawn_hero()
 	hud.select_build_item(_selected_build_id)
 	_refresh_hud()
 
 
+func _setup_tutorial() -> void:
+	if SessionScript.tutorial_done:
+		return
+	_tutorial = TutorialOverlayScript.new()
+	_tutorial.name = "TutorialOverlay"
+	add_child(_tutorial)
+	_tutorial.finished.connect(_on_tutorial_done)
+	_tutorial.skipped.connect(_on_tutorial_done)
+
+
+func _on_tutorial_done() -> void:
+	SessionScript.tutorial_done = true
+
+
 func _process(delta: float) -> void:
 	if phase == Phase.PREP:
 		frost += PREP_FROST_PER_SECOND * float(_upgrade_manager.modifiers.get("frost_regen_multiplier", 1.0)) * delta
+		if is_instance_valid(_hero):
+			_hero.regen(delta)
 	_refresh_hud()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _tutorial != null and _tutorial.has_method("is_blocking") and _tutorial.call("is_blocking"):
+		return
 	if event is InputEventMouseMotion:
 		map_view.set_hover_cell(map_view.world_to_cell(event.position))
 		return
@@ -145,6 +165,20 @@ func _spawn_hero() -> void:
 	_hero = HeroScript.new()
 	hero_container.add_child(_hero)
 	_hero.setup(self, map_view.get_play_rect())
+	_hero.global_position = map_view.get_hero_spawn_world_position()
+	_hero.defeated.connect(_on_hero_defeated)
+
+
+func get_hero_hp() -> int:
+	if not is_instance_valid(_hero):
+		return 0
+	return int(ceil(_hero.get_hp()))
+
+
+func get_hero_max_hp() -> int:
+	if not is_instance_valid(_hero):
+		return 0
+	return int(round(_hero.get_max_hp()))
 
 
 func _handle_left_click(world_position: Vector2) -> void:
@@ -158,7 +192,7 @@ func _handle_left_click(world_position: Vector2) -> void:
 	if map_view.is_buildable(cell):
 		_try_build_structure(cell)
 	else:
-		_status_text = "道路和 IQ 核心所在格不能建造。"
+		_status_text = "道路和 IQ 结晶所在格不能建造。"
 
 
 func _handle_right_click(world_position: Vector2) -> void:
@@ -174,6 +208,7 @@ func _handle_right_click(world_position: Vector2) -> void:
 	if is_instance_valid(_hero):
 		_hero.set_move_target(world_position)
 		_status_text = "琪露诺正在赶路。"
+		_notify_tutorial("move")
 
 
 func _on_build_item_selected(build_id: String) -> void:
@@ -212,6 +247,7 @@ func _try_build_structure(cell: Vector2i) -> void:
 	frost -= float(cost)
 	spawn_hit_effect(structure.global_position, Color("#bdf6ff"), 38.0)
 	_status_text = "%s 部署完成。" % structure.get_display_name()
+	_notify_tutorial("tower" if structure is CirnoTower else "barracks")
 	_refresh_hud()
 
 
@@ -274,7 +310,8 @@ func _on_start_wave_requested() -> void:
 	if not _wave_manager.start_wave(next_index):
 		return
 	phase = Phase.COMBAT
-	_status_text = "妖精开始进攻，守住 IQ 核心！"
+	_status_text = "妖精开始进攻，别让琪露诺被打倒！"
+	_notify_tutorial("wave")
 	_refresh_hud()
 
 
@@ -285,12 +322,15 @@ func _on_wave_started(index: int, display_name: String) -> void:
 	_refresh_hud()
 
 
-func _on_spawn_requested(enemy_id: String, hp_scale: float) -> void:
+func _on_spawn_requested(enemy_id: String, hp_scale: float, entrance_id: String) -> void:
 	if phase == Phase.FINISHED:
 		return
+	var path_points := map_view.get_path_points(
+		entrance_id if map_view.has_entrance(entrance_id) else map_view.DEFAULT_ENTRANCE
+	)
 	var enemy: FairyEnemy = EnemyScript.new()
 	enemies.add_child(enemy)
-	enemy.setup(map_view.get_path_points(), EnemyCatalog.get_definition(enemy_id), hp_scale)
+	enemy.setup(path_points, EnemyCatalog.get_definition(enemy_id), hp_scale)
 	enemy.defeated.connect(_on_enemy_defeated)
 	enemy.reached_core.connect(_on_enemy_reached_core)
 	_wave_manager.notify_enemy_spawned()
@@ -310,15 +350,29 @@ func _on_enemy_defeated(_enemy: FairyEnemy, reward: int, shards: int, world_posi
 		_begin_enchant_choice()
 
 
-func _on_enemy_reached_core(_enemy: FairyEnemy, iq_damage: int) -> void:
-	iq = maxi(0, iq - iq_damage)
-	spawn_hit_effect(map_view.to_global(map_view.cell_to_local(Vector2i(11, 7))), Color("#ff667f"), 42.0)
+func _on_enemy_reached_core(enemy: FairyEnemy, leak_damage: int) -> void:
+	spawn_hit_effect(map_view.get_core_world_position(), Color("#ff667f"), 42.0)
 	_wave_manager.notify_enemy_finished()
-	if iq <= 0:
-		_finish_defeat()
-	else:
-		_status_text = "妖精偷走了 %d 点 IQ！" % iq_damage
+	if phase == Phase.FINISHED:
+		return
+	var enemy_name := str(enemy.definition.get("name", "妖精")) if enemy != null else "妖精"
+	_damage_hero(float(leak_damage), "%s 偷走了 IQ，琪露诺受到 %d 点伤害！" % [enemy_name, leak_damage])
 	_refresh_hud()
+
+
+func _on_hero_defeated(_hero_node: CirnoHero) -> void:
+	if phase == Phase.FINISHED:
+		return
+	_finish_defeat()
+
+
+func _damage_hero(amount: float, message: String) -> void:
+	if phase == Phase.FINISHED or not is_instance_valid(_hero) or not _hero.is_alive():
+		return
+	_hero.take_damage(amount)
+	_status_text = message
+	if not _hero.is_alive():
+		_finish_defeat()
 
 
 func _on_wave_finished(index: int) -> void:
@@ -328,7 +382,7 @@ func _on_wave_finished(index: int) -> void:
 		_finish_victory()
 		return
 
-	frost += 20.0 + index * 5.0
+	frost += 16.0 + index * 4.0
 	ice_crystals += 1
 	phase = Phase.UPGRADE
 	_status_text = "守住第 %d 波。选择一项笨蛋灵感。" % (index + 1)
@@ -354,11 +408,9 @@ func _on_modifier_card_selected(pool: String, modifier_id: String) -> void:
 	if definition.is_empty():
 		return
 	var effects: Dictionary = definition.get("effects", {})
-	max_iq = IQ_START + int(_upgrade_manager.modifiers.get("iq_max_add", 0))
-	if effects.has("heal_now"):
-		iq = mini(max_iq, iq + int(effects["heal_now"]))
-	iq = mini(iq, max_iq)
 	_sync_all_modifiers()
+	if effects.has("heal_now") and is_instance_valid(_hero):
+		_hero.heal(float(effects["heal_now"]))
 	hud.hide_modifier_choices()
 
 	if pool == "enchant":
@@ -403,6 +455,15 @@ func _on_hero_skill_requested(slot: String) -> void:
 
 func _on_restart_requested() -> void:
 	get_tree().reload_current_scene()
+
+
+func _on_menu_requested() -> void:
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+func _notify_tutorial(event_id: String) -> void:
+	if _tutorial != null and is_instance_valid(_tutorial):
+		_tutorial.call("notify", event_id)
 
 
 func _sync_all_modifiers() -> void:
@@ -456,7 +517,7 @@ func _refresh_hud() -> void:
 		WaveCatalog.wave_count(),
 		enemies.get_child_count(),
 	]
-	hud.update_resources(iq, max_iq, int(frost), ice_crystals, wave_text, _status_text)
+	hud.update_resources(get_hero_hp(), get_hero_max_hp(), int(frost), ice_crystals, wave_text, _status_text)
 	hud.set_start_button(phase == Phase.PREP, "开始第 %d 波" % mini(WaveCatalog.wave_count(), wave_index + 2))
 	if is_instance_valid(_hero):
 		hud.set_skill_state("nova", _hero.get_skill_text("nova"), _hero.get_skill_ready("nova") and phase != Phase.FINISHED)
@@ -467,13 +528,13 @@ func _refresh_hud() -> void:
 
 func _finish_victory() -> void:
 	phase = Phase.FINISHED
-	_status_text = "灵梦退治失败，IQ 核心安全。"
+	_status_text = "灵梦退治失败，琪露诺安然无恙。"
 	_refresh_hud()
-	hud.show_result(true, "你守住了琪露诺的 IQ。\n剩余 IQ：%d / %d\n累计击退妖精：%d" % [iq, max_iq, total_kills])
+	hud.show_result(true, "你保护了琪露诺，守住了她的 IQ。\n剩余生命：%d / %d\n累计击退妖精：%d" % [get_hero_hp(), get_hero_max_hp(), total_kills])
 
 
 func _finish_defeat() -> void:
 	phase = Phase.FINISHED
-	_status_text = "IQ 归零，琪露诺被证明是笨蛋了。"
+	_status_text = "琪露诺倒下了，IQ 被妖精们偷光了。"
 	_refresh_hud()
-	hud.show_result(false, "IQ 被妖精们偷光了。\n坚持到第 %d 波，击退妖精 %d 只。" % [wave_index + 1, total_kills])
+	hud.show_result(false, "琪露诺的生命归零了。\n坚持到第 %d 波，击退妖精 %d 只。" % [wave_index + 1, total_kills])

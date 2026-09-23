@@ -5,18 +5,53 @@ const COLS := 12
 const ROWS := 9
 const CELL_SIZE := 60.0
 const BOARD_SIZE := Vector2(COLS * CELL_SIZE, ROWS * CELL_SIZE)
-const PATH_NODES: Array[Vector2i] = [
-	Vector2i(-1, 4),
-	Vector2i(2, 4),
-	Vector2i(2, 1),
-	Vector2i(5, 1),
-	Vector2i(5, 4),
-	Vector2i(8, 4),
-	Vector2i(8, 2),
-	Vector2i(10, 2),
-	Vector2i(10, 7),
-	Vector2i(11, 7),
-]
+const CORE_CELL := Vector2i(11, 7)
+const HERO_SPAWN_CELL := Vector2i(0, 6)
+const DEFAULT_ENTRANCE := "west"
+const ENTRANCE_LABELS := {
+	"west": "西",
+	"north": "北",
+	"south": "南",
+	"east": "东",
+}
+# 四个方向的出兵路径，全部汇向 IQ 结晶（CORE_CELL）。
+const PATHS := {
+	"west": [
+		Vector2i(-1, 4),
+		Vector2i(2, 4),
+		Vector2i(2, 1),
+		Vector2i(5, 1),
+		Vector2i(5, 4),
+		Vector2i(8, 4),
+		Vector2i(8, 2),
+		Vector2i(10, 2),
+		Vector2i(10, 7),
+		Vector2i(11, 7),
+	],
+	"north": [
+		Vector2i(6, -1),
+		Vector2i(6, 2),
+		Vector2i(9, 2),
+		Vector2i(9, 5),
+		Vector2i(11, 5),
+		Vector2i(11, 7),
+	],
+	"south": [
+		Vector2i(2, 9),
+		Vector2i(2, 6),
+		Vector2i(5, 6),
+		Vector2i(5, 8),
+		Vector2i(9, 8),
+		Vector2i(9, 7),
+		Vector2i(11, 7),
+	],
+	"east": [
+		Vector2i(11, 0),
+		Vector2i(8, 0),
+		Vector2i(8, 7),
+		Vector2i(11, 7),
+	],
+}
 
 var hover_cell := Vector2i(-99, -99)
 var selected_tower_id := "icicle"
@@ -30,22 +65,24 @@ func _ready() -> void:
 
 func _build_path_cells() -> void:
 	_path_cells.clear()
-	for node_index in range(PATH_NODES.size() - 1):
-		var from := PATH_NODES[node_index]
-		var to := PATH_NODES[node_index + 1]
-		var delta := to - from
-		var step := Vector2i(0, 0)
-		if delta.x != 0:
-			step.x = 1 if delta.x > 0 else -1
-		if delta.y != 0:
-			step.y = 1 if delta.y > 0 else -1
-		var cursor := from
-		while cursor != to:
-			if cursor not in _path_cells:
-				_path_cells.append(cursor)
-			cursor += step
-		if to not in _path_cells:
-			_path_cells.append(to)
+	for entrance_id in PATHS:
+		var nodes: Array = PATHS[entrance_id]
+		for node_index in range(nodes.size() - 1):
+			var from: Vector2i = nodes[node_index]
+			var to: Vector2i = nodes[node_index + 1]
+			var delta := to - from
+			var step := Vector2i(0, 0)
+			if delta.x != 0:
+				step.x = 1 if delta.x > 0 else -1
+			if delta.y != 0:
+				step.y = 1 if delta.y > 0 else -1
+			var cursor := from
+			while cursor != to:
+				if cursor not in _path_cells:
+					_path_cells.append(cursor)
+				cursor += step
+			if to not in _path_cells:
+				_path_cells.append(to)
 
 
 func is_inside(cell: Vector2i) -> bool:
@@ -69,11 +106,24 @@ func world_to_cell(world_position: Vector2) -> Vector2i:
 	return Vector2i(int(floor(local_position.x / CELL_SIZE)), int(floor(local_position.y / CELL_SIZE)))
 
 
-func get_path_points() -> PackedVector2Array:
+func has_entrance(entrance_id: String) -> bool:
+	return PATHS.has(entrance_id)
+
+
+func get_path_points(entrance_id: String = "west") -> PackedVector2Array:
+	var nodes: Array = PATHS.get(entrance_id, PATHS[DEFAULT_ENTRANCE])
 	var points := PackedVector2Array()
-	for node in PATH_NODES:
+	for node in nodes:
 		points.append(position + cell_to_local(node))
 	return points
+
+
+func get_core_world_position() -> Vector2:
+	return to_global(cell_to_local(CORE_CELL))
+
+
+func get_hero_spawn_world_position() -> Vector2:
+	return to_global(cell_to_local(HERO_SPAWN_CELL))
 
 
 func get_play_rect() -> Rect2:
@@ -81,27 +131,25 @@ func get_play_rect() -> Rect2:
 
 
 func get_closest_path_world_position(origin: Vector2) -> Vector2:
-	var points := get_path_points()
-	if points.is_empty():
-		return origin
-	if points.size() == 1:
-		return points[0]
-
-	var closest := points[0]
-	var closest_distance := origin.distance_squared_to(closest)
-	for index in range(points.size() - 1):
-		var segment_start := points[index]
-		var segment_end := points[index + 1]
-		var segment := segment_end - segment_start
-		var segment_length_squared := segment.length_squared()
-		var candidate := segment_start
-		if segment_length_squared > 0.0001:
-			var t := clampf((origin - segment_start).dot(segment) / segment_length_squared, 0.0, 1.0)
-			candidate = segment_start + segment * t
-		var candidate_distance := origin.distance_squared_to(candidate)
-		if candidate_distance < closest_distance:
-			closest = candidate
-			closest_distance = candidate_distance
+	var closest := origin
+	var closest_distance := INF
+	for entrance_id in PATHS:
+		var points := get_path_points(str(entrance_id))
+		if points.is_empty():
+			continue
+		for index in range(points.size() - 1):
+			var segment_start := points[index]
+			var segment_end := points[index + 1]
+			var segment := segment_end - segment_start
+			var segment_length_squared := segment.length_squared()
+			var candidate := segment_start
+			if segment_length_squared > 0.0001:
+				var t := clampf((origin - segment_start).dot(segment) / segment_length_squared, 0.0, 1.0)
+				candidate = segment_start + segment * t
+			var candidate_distance := origin.distance_squared_to(candidate)
+			if candidate_distance < closest_distance:
+				closest = candidate
+				closest_distance = candidate_distance
 	return closest
 
 
@@ -148,19 +196,31 @@ func _draw() -> void:
 
 
 func _draw_spawn_and_core() -> void:
-	var spawn := cell_to_local(PATH_NODES[0])
-	draw_circle(spawn, 26.0, Color(0.18, 0.85, 1.0, 0.15))
-	draw_arc(spawn, 20.0, -1.2, 1.2, 24, Color("#9cecff"), 3.0)
+	var font := ThemeDB.fallback_font
+	for entrance_id in PATHS:
+		var nodes: Array = PATHS[entrance_id]
+		var spawn := cell_to_local(nodes[0])
+		var direction := (cell_to_local(nodes[1]) - cell_to_local(nodes[0])).normalized()
+		var angle := direction.angle()
+		draw_circle(spawn, 26.0, Color(0.18, 0.85, 1.0, 0.15))
+		draw_arc(spawn, 20.0, angle - 1.2, angle + 1.2, 24, Color("#9cecff"), 3.0)
+		var label_position := spawn + direction * 40.0
+		draw_string(
+			font,
+			label_position + Vector2(-14.0, 6.0),
+			str(ENTRANCE_LABELS.get(entrance_id, "?")),
+			HORIZONTAL_ALIGNMENT_CENTER,
+			28.0,
+			14,
+			Color("#dcf8ff")
+		)
 
-	var core_cell := Vector2i(11, 7)
-	var core_position := cell_to_local(core_cell)
+	var core_position := cell_to_local(CORE_CELL)
 	draw_circle(core_position, 24.0, Color("#9eeeff"))
 	draw_circle(core_position, 17.0, Color("#2faee0"))
 	draw_line(core_position + Vector2(-13, 0), core_position + Vector2(13, 0), Color("#effcff"), 3.0)
 	draw_line(core_position + Vector2(0, -13), core_position + Vector2(0, 13), Color("#effcff"), 3.0)
-
-	var font := ThemeDB.fallback_font
-	draw_string(font, core_position + Vector2(-20, 43), "IQ 核心", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#dcf8ff"))
+	draw_string(font, core_position + Vector2(-26, 43), "IQ 结晶", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#dcf8ff"))
 
 
 func _draw_hover() -> void:

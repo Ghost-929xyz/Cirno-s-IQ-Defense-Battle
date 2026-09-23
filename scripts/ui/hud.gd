@@ -7,11 +7,13 @@ signal upgrade_structure_requested
 signal modifier_card_selected(pool: String, modifier_id: String)
 signal hero_skill_requested(slot: String)
 signal restart_requested
+signal menu_requested
 
 const PANEL_X := 770.0
 const PANEL_WIDTH := 398.0
 
-var _iq_label: Label
+var _hp_label: Label
+var _hp_bar: ProgressBar
 var _resource_label: Label
 var _wave_label: Label
 var _status_label: Label
@@ -35,6 +37,7 @@ var _result_description: Label
 var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _frost := 0
+var _hp_bar_fill_color := Color("#4fd39a")
 
 
 func _ready() -> void:
@@ -54,13 +57,23 @@ func _build_side_panel() -> void:
 	var title := _make_label(panel, "琪露诺的智商保卫战", Vector2(16.0, 8.0), Vector2(366.0, 30.0), 21, Color("#ebfdff"))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	_iq_label = _make_label(panel, "IQ 20 / 20", Vector2(18.0, 40.0), Vector2(362.0, 24.0), 18, Color("#9ff4ff"))
-	_resource_label = _make_label(panel, "冻气 180   冰晶 0", Vector2(18.0, 64.0), Vector2(362.0, 24.0), 16, Color("#ddf8ff"))
-	_wave_label = _make_label(panel, "准备 · 第 0 / 10 波 · 在场 0", Vector2(18.0, 90.0), Vector2(362.0, 22.0), 14, Color("#b5d7e5"))
-	_status_label = _make_label(panel, "右键移动琪露诺；选择建筑后点击草地格部署。", Vector2(18.0, 113.0), Vector2(362.0, 46.0), 12, Color("#8fb4c8"))
+	_hp_label = _make_label(panel, "琪露诺生命 240 / 240", Vector2(18.0, 40.0), Vector2(362.0, 24.0), 17, Color("#9ff4ff"))
+	_hp_bar = ProgressBar.new()
+	_hp_bar.position = Vector2(18.0, 66.0)
+	_hp_bar.size = Vector2(362.0, 11.0)
+	_hp_bar.min_value = 0.0
+	_hp_bar.max_value = 240.0
+	_hp_bar.value = 240.0
+	_hp_bar.show_percentage = false
+	_hp_bar.add_theme_stylebox_override("background", _bar_style(Color("#0a1c2c"), Color("#2c6c8e")))
+	_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#4fd39a"), Color("#c9fff0")))
+	panel.add_child(_hp_bar)
+	_resource_label = _make_label(panel, "冻气 180   冰晶 0", Vector2(18.0, 82.0), Vector2(362.0, 24.0), 16, Color("#ddf8ff"))
+	_wave_label = _make_label(panel, "准备 · 第 0 / 10 波 · 在场 0", Vector2(18.0, 108.0), Vector2(362.0, 22.0), 14, Color("#b5d7e5"))
+	_status_label = _make_label(panel, "右键移动琪露诺；选择建筑后点击草地格部署。", Vector2(18.0, 131.0), Vector2(362.0, 46.0), 12, Color("#8fb4c8"))
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
-	var build_title := _make_label(panel, "建造 · 数字键 1-6", Vector2(18.0, 162.0), Vector2(362.0, 20.0), 15, Color("#e7fbff"))
+	var build_title := _make_label(panel, "建造 · 数字键 1-6", Vector2(18.0, 180.0), Vector2(362.0, 20.0), 15, Color("#e7fbff"))
 	build_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var group := ButtonGroup.new()
@@ -70,7 +83,7 @@ func _build_side_panel() -> void:
 		var column := button_index % 2
 		var row := button_index / 2
 		var button := Button.new()
-		button.position = Vector2(18.0 + column * 184.0, 184.0 + row * 70.0)
+		button.position = Vector2(18.0 + column * 184.0, 202.0 + row * 70.0)
 		button.size = Vector2(178.0, 62.0)
 		button.toggle_mode = true
 		button.button_group = group
@@ -90,35 +103,35 @@ func _build_side_panel() -> void:
 		_build_buttons[str(build_id)] = button
 		button_index += 1
 
-	var skill_title := _make_label(panel, "琪露诺技能", Vector2(18.0, 399.0), Vector2(362.0, 20.0), 14, Color("#e7fbff"))
+	var skill_title := _make_label(panel, "琪露诺技能", Vector2(18.0, 414.0), Vector2(362.0, 20.0), 14, Color("#e7fbff"))
 	skill_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var nova_button := _make_action_button("Q 冰霜新星", Color("#246f99"))
-	nova_button.position = Vector2(18.0, 421.0)
+	nova_button.position = Vector2(18.0, 436.0)
 	nova_button.size = Vector2(178.0, 38.0)
 	nova_button.pressed.connect(func() -> void: hero_skill_requested.emit("nova"))
 	panel.add_child(nova_button)
 	_skill_buttons["nova"] = nova_button
 
 	var freeze_button := _make_action_button("R 完美冻结", Color("#6255a8"))
-	freeze_button.position = Vector2(202.0, 421.0)
+	freeze_button.position = Vector2(202.0, 436.0)
 	freeze_button.size = Vector2(178.0, 38.0)
 	freeze_button.pressed.connect(func() -> void: hero_skill_requested.emit("freeze"))
 	panel.add_child(freeze_button)
 	_skill_buttons["freeze"] = freeze_button
 
-	_structure_detail_label = _make_label(panel, "点击已有建筑可查看状态并升级。\n右键建筑后点击妖精可指定优先目标。", Vector2(18.0, 468.0), Vector2(362.0, 55.0), 12, Color("#d7edf5"))
+	_structure_detail_label = _make_label(panel, "点击已有建筑可查看状态并升级。\n右键建筑后点击妖精可指定优先目标。", Vector2(18.0, 480.0), Vector2(362.0, 55.0), 12, Color("#d7edf5"))
 	_structure_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_upgrade_button = _make_action_button("升级选中建筑", Color("#8a6b2a"))
-	_upgrade_button.position = Vector2(18.0, 530.0)
-	_upgrade_button.size = Vector2(362.0, 34.0)
+	_upgrade_button.position = Vector2(18.0, 538.0)
+	_upgrade_button.size = Vector2(362.0, 32.0)
 	_upgrade_button.visible = false
 	_upgrade_button.pressed.connect(func() -> void: upgrade_structure_requested.emit())
 	panel.add_child(_upgrade_button)
 
 	_start_button = _make_action_button("开始第 1 波", Color("#2f8b70"))
-	_start_button.position = Vector2(18.0, 576.0)
+	_start_button.position = Vector2(18.0, 578.0)
 	_start_button.size = Vector2(362.0, 44.0)
 	_start_button.add_theme_font_size_override("font_size", 17)
 	_start_button.pressed.connect(func() -> void: start_wave_requested.emit())
@@ -188,16 +201,34 @@ func _build_result_overlay() -> void:
 	_result_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	var restart := _make_action_button("再守一次", Color("#2f8b70"))
-	restart.position = Vector2(100.0, 235.0)
-	restart.size = Vector2(280.0, 54.0)
-	restart.add_theme_font_size_override("font_size", 18)
+	restart.position = Vector2(55.0, 235.0)
+	restart.size = Vector2(175.0, 54.0)
+	restart.add_theme_font_size_override("font_size", 17)
 	restart.pressed.connect(func() -> void: restart_requested.emit())
 	panel.add_child(restart)
 
+	var menu_button := _make_action_button("返回主菜单", Color("#2c6c8e"))
+	menu_button.position = Vector2(250.0, 235.0)
+	menu_button.size = Vector2(175.0, 54.0)
+	menu_button.add_theme_font_size_override("font_size", 17)
+	menu_button.pressed.connect(func() -> void: menu_requested.emit())
+	panel.add_child(menu_button)
 
-func update_resources(iq: int, max_iq: int, frost: int, ice_crystals: int, wave_text: String, status_text: String) -> void:
+
+func update_resources(hero_hp: int, hero_max_hp: int, frost: int, ice_crystals: int, wave_text: String, status_text: String) -> void:
 	_frost = frost
-	_iq_label.text = "IQ  %d / %d" % [iq, max_iq]
+	var ratio := clampf(float(hero_hp) / maxf(1.0, float(hero_max_hp)), 0.0, 1.0)
+	_hp_label.text = "琪露诺生命  %d / %d" % [hero_hp, hero_max_hp]
+	if ratio <= 0.35:
+		_hp_label.add_theme_color_override("font_color", Color("#ff9bad"))
+	else:
+		_hp_label.add_theme_color_override("font_color", Color("#9ff4ff"))
+	_hp_bar.max_value = maxf(1.0, float(hero_max_hp))
+	_hp_bar.value = float(hero_hp)
+	var fill_color := Color("#e05a72") if ratio <= 0.35 else (Color("#e0b24a") if ratio <= 0.65 else Color("#4fd39a"))
+	if _hp_bar_fill_color != fill_color:
+		_hp_bar_fill_color = fill_color
+		_hp_bar.add_theme_stylebox_override("fill", _bar_style(fill_color, fill_color.lightened(0.35)))
 	_resource_label.text = "冻气  %d   冰晶  %d" % [frost, ice_crystals]
 	_wave_label.text = wave_text
 	_status_label.text = status_text
@@ -339,6 +370,15 @@ func _make_label(
 	label.add_theme_color_override("font_color", color)
 	parent.add_child(label)
 	return label
+
+
+func _bar_style(background: Color, border: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = background
+	style.border_color = border
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(5)
+	return style
 
 
 func _panel_style(background: Color, border: Color) -> StyleBoxFlat:

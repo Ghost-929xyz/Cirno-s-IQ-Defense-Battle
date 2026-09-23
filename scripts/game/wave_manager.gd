@@ -3,7 +3,7 @@ extends Node
 
 signal wave_started(index: int, display_name: String)
 signal wave_finished(index: int)
-signal spawn_requested(enemy_id: String, hp_scale: float)
+signal spawn_requested(enemy_id: String, hp_scale: float, entrance_id: String)
 
 var current_index := -1
 var running := false
@@ -35,11 +35,13 @@ func start_wave(index: int) -> bool:
 		var count := int(group.get("count", 1))
 		var interval := float(group.get("interval", 1.0))
 		var delay := float(group.get("delay", 0.0))
+		var entrance_id := str(group.get("entrance", "west"))
 		for spawn_index in range(count):
 			_events.append({
 				"time": delay + spawn_index * interval,
 				"enemy_id": enemy_id,
 				"hp_scale": hp_scale,
+				"entrance": entrance_id,
 			})
 
 	_events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.time) < float(b.time))
@@ -68,7 +70,7 @@ func _process(delta: float) -> void:
 	while _event_index < _events.size() and float(_events[_event_index].time) <= _elapsed:
 		var event := _events[_event_index]
 		_event_index += 1
-		spawn_requested.emit(str(event.enemy_id), float(event.hp_scale))
+		spawn_requested.emit(str(event.enemy_id), float(event.hp_scale), str(event.entrance))
 	_try_finish()
 
 

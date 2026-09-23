@@ -25,8 +25,11 @@ Platform            Godot Node/Scene、输入、绘制、音频接口预留
 ## 3. 场景树
 
 ```text
-FogLakeLevel (game.gd)
-├── MapView                 path、grid、IQ Core、hover
+MainMenu (menu.tscn / main_menu.gd)     开始菜单，change_scene_to_file 进入战斗
+└── (代码构建的标题、按钮、帮助面板、飘雪背景)
+
+FogLakeLevel (main.tscn / game.gd)
+├── MapView                 path、grid、IQ 结晶、四向出生裂缝、hover
 ├── Towers                  CirnoTower 实例
 ├── Barracks                FairyBarracks 实例
 ├── Allies                  AllyUnit 实例
@@ -34,13 +37,16 @@ FogLakeLevel (game.gd)
 ├── Enemies                 FairyEnemy 实例
 ├── Projectiles             TowerProjectile 实例
 ├── Effects                 HitEffect 实例
-└── HUD                     BattleHUD
+├── HUD                     BattleHUD
+└── TutorialOverlay         新手引导（未完成引导时运行时创建）
 
 FogLakeLevel
 └── WaveManager             运行时创建
 ```
 
-`game.gd` 是当前关卡的组合根和状态所有者，持有 IQ、冻气、冰晶、阶段、选中建筑与英雄引用。它负责输入和跨系统协调，不负责敌人移动、投射物追踪或单位绘制。
+`game.gd` 是当前关卡的组合根和状态所有者，持有冻气、冰晶、阶段、选中建筑与英雄引用。它负责输入和跨系统协调，不负责敌人移动、投射物追踪或单位绘制。琪露诺生命（唯一失败条件）由 `CirnoHero` 自己持有，`FogLakeLevel` 只负责扣减、回血与判定。
+
+`scripts/autoload/session.gd` 用静态变量保存跨场景会话状态（当前只有新手引导完成标记），不依赖 autoload 注册，任何运行方式下都可用。
 
 ## 4. 类职责
 
@@ -54,16 +60,18 @@ FogLakeLevel
 
 ### WaveManager
 
-- 把 `WaveCatalog` 的群组展开为按时间排序的生成事件。
+- 把 `WaveCatalog` 的群组展开为按时间排序的生成事件，事件携带 `entrance`（west / north / south / east）。
+- `spawn_requested(enemy_id, hp_scale, entrance_id)` 把出兵方向交给 `FogLakeLevel`。
 - 管理生成计时、暂停状态和存活敌人数。
 - 当事件耗尽且敌人归零时发出 `wave_finished`。
 
 ### LakeMapView
 
 - 生成路径格、草地格和可玩矩形。
-- 提供 `world_to_cell`、`is_buildable`、`get_path_points`。
-- 提供 `get_closest_path_world_position`，供兵营确定单位出生点。
-- 绘制出生裂缝、IQ 核心和建造悬停状态。
+- 维护 `PATHS`（四条出兵路径，全部汇向 `CORE_CELL`）与 `DEFAULT_ENTRANCE`。
+- 提供 `world_to_cell`、`is_buildable`、`has_entrance`、`get_path_points(entrance_id)`、`get_core_world_position`。
+- 提供 `get_closest_path_world_position`，跨所有路径供兵营确定单位出生点。
+- 绘制四向出生裂缝（带方向指示与方位标签）、IQ 结晶和建造悬停状态。
 
 ### DefenseStructure
 
@@ -85,6 +93,7 @@ FogLakeLevel
 
 ### CirnoHero
 
+- 持有生命值、护甲与准备阶段回血；生命归零时发出 `defeated` 信号，这是关卡唯一失败条件。
 - 受右键移动目标和可玩矩形约束。
 - 自动索敌、攻击并管理 Q/R 冷却。
 - 维护 Baka 寒气击杀阈值被动。
@@ -92,8 +101,8 @@ FogLakeLevel
 ### FairyEnemy
 
 - 沿 PackedVector2Array 路径移动。
-- 扫描附近己方兵种与建筑并停下攻击。
-- 处理护甲、减速、冻结、死亡奖励与核心伤害信号。
+- 扫描附近己方兵种、建筑与琪露诺并停下攻击。
+- 处理护甲、减速、冻结、死亡奖励与漏怪伤害信号。
 
 ### AllyUnit
 
@@ -118,6 +127,7 @@ upgrade_structure_requested
 modifier_card_selected
 hero_skill_requested
 restart_requested
+menu_requested
 ```
 
 实体只报告事实，不直接改全局资源：
@@ -130,9 +140,10 @@ AllyUnit.defeated
 WaveManager.wave_started
 WaveManager.wave_finished
 WaveManager.spawn_requested
+TutorialOverlay.finished / skipped
 ```
 
-例如妖精不会直接扣 IQ；它发出 `reached_core`，由 `FogLakeLevel` 统一扣减、刷新 HUD 并判断失败。
+例如妖精不会直接扣生命；它发出 `reached_core`，由 `FogLakeLevel` 统一扣除琪露诺生命、刷新 HUD 并判断失败。琪露诺被妖精打死时则由 `CirnoHero.defeated` 通知 `FogLakeLevel` 结算。
 
 ## 6. 数据目录
 
@@ -143,7 +154,7 @@ WaveManager.spawn_requested
 | `ally_catalog.gd` | 近卫、射手、法师数值 |
 | `build_catalog.gd` | 合并 1-6 建造项并区分塔/兵营 |
 | `enemy_catalog.gd` | 普通、精英与 Boss 数值 |
-| `wave_catalog.gd` | 10 波生成事件与血量倍率 |
+| `wave_catalog.gd` | 10 波生成事件、出兵口与血量倍率 |
 | `upgrade_catalog.gd` | 笨蛋灵感与冰晶附魔 |
 
 ## 7. 后续扩展
@@ -169,14 +180,16 @@ scripts/systems/save_service.gd
 scripts/data/resources/*.tres
 ```
 
-`RunState` 跨层持有 IQ、英雄成长、冰晶、祝福与随机种子；单关只销毁战斗节点，不销毁局内进度。
+`RunState` 跨层持有琪露诺生命、英雄成长、冰晶、祝福与随机种子；单关只销毁战斗节点，不销毁局内进度。
 
 ## 8. 验证
 
-项目包含无窗口烟测：
+项目包含三条无窗口测试：
 
 ```powershell
-godot --headless --path . --script .tools/smoke_test.gd
+godot --headless --path . --script .tools/smoke_test.gd    # 建造、开波、单位生成、英雄技能
+godot --headless --path . --script .tools/ui_test.gd       # 菜单、四入口路径、新手引导、多入口出兵
+godot --headless --path . --script .tools/battle_test.gd   # 多入口混编战斗全链路
 ```
 
-烟测会实例化主场景，建造一座冰锥塔和一座冰晶兵营，开始第 1 波，等待妖精与己方兵种生成，然后释放 Q/R。
+`smoke_test` 会实例化主场景，建造一座冰锥塔和一座冰晶兵营，开始第 1 波，等待妖精与己方兵种生成，然后释放 Q/R。`ui_test` 额外校验菜单场景、四条入口路径、波次数据中的 `entrance` 合法性以及引导推进。`battle_test` 从四个入口混编增兵，验证塔、兵营、英雄技能与漏怪扣除琪露诺生命全链路无报错。

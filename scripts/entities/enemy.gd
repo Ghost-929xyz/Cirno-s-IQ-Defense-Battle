@@ -2,7 +2,7 @@ class_name FairyEnemy
 extends Node2D
 
 signal defeated(enemy: FairyEnemy, reward: int, shards: int, world_position: Vector2)
-signal reached_core(enemy: FairyEnemy, iq_damage: int)
+signal reached_core(enemy: FairyEnemy, leak_damage: int)
 
 var definition: Dictionary = {}
 var max_hp := 1.0
@@ -132,6 +132,15 @@ func _find_combat_target() -> Node2D:
 			nearest = ally
 			nearest_distance = distance
 
+	for hero_node in get_tree().get_nodes_in_group("hero"):
+		var hero := hero_node as CirnoHero
+		if hero == null or not is_instance_valid(hero) or not hero.is_alive():
+			continue
+		var hero_distance := global_position.distance_to(hero.global_position)
+		if hero_distance <= 45.0 and hero_distance < nearest_distance:
+			nearest = hero
+			nearest_distance = hero_distance
+
 	var structure_reach := float(definition.get("attack_range", 36.0)) + 18.0
 	for structure_node in get_tree().get_nodes_in_group("structures"):
 		var structure := structure_node as DefenseStructure
@@ -180,7 +189,7 @@ func _reach_core() -> void:
 	if not _active:
 		return
 	_active = false
-	reached_core.emit(self, int(definition.get("iq_damage", 1)))
+	reached_core.emit(self, int(definition.get("leak_damage", 5)))
 	queue_free()
 
 

@@ -14,7 +14,7 @@ var modifiers := {
 	"slow_bonus": 0.0,
 	"splash_multiplier": 1.0,
 	"frost_regen_multiplier": 1.0,
-	"iq_max_add": 0,
+	"hero_max_hp_add": 0.0,
 	"build_cost_multiplier": 1.0,
 }
 
@@ -89,8 +89,8 @@ func _apply_effect(effect_key: String, value: float) -> void:
 			modifiers["splash_multiplier"] = float(modifiers["splash_multiplier"]) + value
 		"frost_regen_multiplier_add":
 			modifiers["frost_regen_multiplier"] = float(modifiers["frost_regen_multiplier"]) + value
-		"iq_max_add":
-			modifiers["iq_max_add"] = int(modifiers["iq_max_add"]) + int(value)
+		"hero_max_hp_add":
+			modifiers["hero_max_hp_add"] = float(modifiers["hero_max_hp_add"]) + value
 		"build_cost_multiplier_add":
 			modifiers["build_cost_multiplier"] = clampf(float(modifiers["build_cost_multiplier"]) + value, 0.55, 1.25)
 		_:

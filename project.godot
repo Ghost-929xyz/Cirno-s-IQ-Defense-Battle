@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="琪露诺的智商保卫战"
 config/description="雾之湖第一关塔防 Roguelike 原型"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/art/icon_placeholder.svg"
 

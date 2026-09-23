@@ -67,12 +67,12 @@ const BLESSINGS := [
 		"effects": {"hero_cooldown_multiplier_add": -0.10},
 	},
 	{
-		"id": "iq_crystal",
+		"id": "vital_crystal",
 		"name": "IQ 结晶扩容",
-		"description": "最大 IQ +5，并立即回复 5 IQ。",
+		"description": "琪露诺最大生命 +30，并立即回复 30 生命。",
 		"rarity": "稀有",
-		"max_stacks": 2,
-		"effects": {"iq_max_add": 5, "heal_now": 5},
+		"max_stacks": 3,
+		"effects": {"hero_max_hp_add": 30, "heal_now": 30},
 	},
 	{
 		"id": "frozen_economy",
