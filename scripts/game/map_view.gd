@@ -1,17 +1,24 @@
 class_name LakeMapView
 extends Node2D
 
-## 地图视图：20×15 中等密度网格 + 四条弯曲出兵路径。
-## 棋盘坐标以「格」为单位；本地/世界像素坐标通过 cell_to_local / to_global 换算。
-## 绘制仅使用少量大矩形与折线，避免逐格绘制大量格子，保证性能。
+## 地图视图：可从像素画 PNG 读取地图，也可用内置默认地图。
+## 像素画规则：1 像素 = 1 格；颜色含义见下方 COLOR_* 与 assets/maps/README_绘制说明.md。
+## 若 assets/maps/map.png 存在且合法，则优先使用它；否则回退到内置默认地图。
 
-const COLS := 20
-const ROWS := 15
+## 像素画文件路径（相对 res://）。改成你自己的图后，启动游戏即自动生效。
+const MAP_IMAGE_PATH := "res://assets/maps/map.png"
+const COLOR_PATH := Color("#0a0f14")    # 深色 = 路径（敌人行走，不可建造）
+const COLOR_CORE := Color("#ffe26b")    # 黄色 = IQ 结晶（只能有 1 格）
+const COLOR_SPAWN := Color("#7ef0a4")   # 绿色 = 琪露诺出生点
+const COLOR_LAND := Color("#4a5d68")    # 模板用灰色 = 空地（可建造；其它任意颜色也可以）
+const COLOR_TOLERANCE := 0.18           # 颜色容差，避免画图软件轻微变色后读不到
+
+## 内置默认地图参数（仅在读不到像素画时使用）
+const DEFAULT_COLS := 20
+const DEFAULT_ROWS := 15
 const CELL_SIZE := 30.0
-const BOARD_SIZE := Vector2(COLS * CELL_SIZE, ROWS * CELL_SIZE)
-
-const CORE_CELL := Vector2i(10, 7)
-const HERO_SPAWN_CELL := Vector2i(1, 12)
+const DEFAULT_CORE_CELL := Vector2i(10, 7)
+const DEFAULT_HERO_SPAWN_CELL := Vector2i(1, 12)
 const DEFAULT_ENTRANCE := "west"
 const ENTRANCE_LABELS := {
 	"west": "西",
@@ -19,13 +26,12 @@ const ENTRANCE_LABELS := {
 	"south": "南",
 	"east": "东",
 }
-## 每条路从边界入口蜿蜒汇向核心（CORE_CELL），经 Catmull-Rom 平滑成弯曲曲线。
 ## 路宽约 2 格（1 格半宽），保证空地留有充足的建造区域。
 const PATH_HALF_WIDTH := 0.9
 const PATH_SEGMENT_CELLS := 1.0
 
-## 各入口的路径关键点（格坐标），会经 Catmull-Rom 平滑成弯曲曲线。
-const PATHS := {
+## 内置默认地图：各入口的路径关键点（格坐标），经 Catmull-Rom 平滑成弯曲曲线。
+const DEFAULT_PATHS := {
 	"west": [
 		Vector2i(0, 7), Vector2i(3, 7), Vector2i(3, 4), Vector2i(6, 4),
 		Vector2i(6, 7), Vector2i(10, 7),
@@ -43,6 +49,15 @@ const PATHS := {
 		Vector2i(13, 7), Vector2i(10, 7),
 	],
 }
+
+## 运行时参数（像素画可能改变棋盘尺寸/核心/出生点）
+var COLS := DEFAULT_COLS
+var ROWS := DEFAULT_ROWS
+var BOARD_SIZE := Vector2(COLS * CELL_SIZE, ROWS * CELL_SIZE)
+var CORE_CELL := DEFAULT_CORE_CELL
+var HERO_SPAWN_CELL := DEFAULT_HERO_SPAWN_CELL
+var PATHS: Dictionary = {}
+
 var hover_cell := Vector2i(-99, -99)
 var selected_tower_id := "icicle"
 var _path_cells: Dictionary = {}
@@ -53,8 +68,155 @@ var _has_selection := false
 
 
 func _ready() -> void:
+	if not _load_map_from_image():
+		_setup_default_map()
 	_build_paths()
 	queue_redraw()
+
+
+## 优先读取像素画地图。成功返回 true。
+func _load_map_from_image() -> bool:
+	if not FileAccess.file_exists(MAP_IMAGE_PATH):
+		return false
+	var img := Image.new()
+	if img.load(ProjectSettings.globalize_path(MAP_IMAGE_PATH)) != OK:
+		push_warning("地图像素画读取失败: %s" % MAP_IMAGE_PATH)
+		return false
+	COLS = img.get_width()
+	ROWS = img.get_height()
+	if COLS < 4 or ROWS < 4:
+		push_warning("地图像素画尺寸过小（至少 4x4 格）")
+		return false
+	BOARD_SIZE = Vector2(COLS * CELL_SIZE, ROWS * CELL_SIZE)
+	var path_cells: Dictionary = {}
+	var core := Vector2i(-1, -1)
+	var spawn := Vector2i(-1, -1)
+	for y in range(ROWS):
+		for x in range(COLS):
+			var c := img.get_pixel(x, y)
+			if c.a < 0.5:
+				continue  # 透明 = 空地
+			var cell := Vector2i(x, y)
+			if _color_close(c, COLOR_CORE):
+				core = cell
+			elif _color_close(c, COLOR_SPAWN):
+				spawn = cell
+			elif _color_close(c, COLOR_PATH):
+				path_cells[cell] = true
+	if core.x < 0:
+		push_warning("地图像素画里没有核心色（黄），回退到默认地图")
+		return false
+	CORE_CELL = core
+	HERO_SPAWN_CELL = spawn if spawn.x >= 0 else DEFAULT_HERO_SPAWN_CELL
+	_path_cells = path_cells
+	PATHS = _derive_paths_from_cells()
+	if PATHS.is_empty():
+		push_warning("地图像素画里没有能从边界通向核心的路径，回退到默认地图")
+		return false
+	return true
+
+
+func _setup_default_map() -> void:
+	COLS = DEFAULT_COLS
+	ROWS = DEFAULT_ROWS
+	BOARD_SIZE = Vector2(COLS * CELL_SIZE, ROWS * CELL_SIZE)
+	CORE_CELL = DEFAULT_CORE_CELL
+	HERO_SPAWN_CELL = DEFAULT_HERO_SPAWN_CELL
+	PATHS = DEFAULT_PATHS.duplicate(true)
+
+
+## 从像素画路格自动推导：入口（边界路格）→ 核心 的路径。
+func _derive_paths_from_cells() -> Dictionary:
+	# BFS：从核心出发，沿四连通的路径格扩展，记录每个格的前驱
+	var prev := {CORE_CELL: Vector2i(-1, -1)}
+	var queue: Array[Vector2i] = [CORE_CELL]
+	var head := 0
+	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	while head < queue.size():
+		var cur: Vector2i = queue[head]
+		head += 1
+		for d in dirs:
+			var nb: Vector2i = cur + d
+			if _path_cells.has(nb) and not prev.has(nb):
+				prev[nb] = cur
+				queue.append(nb)
+	# 边界上可达的路格 = 入口候选
+	var border: Array[Vector2i] = []
+	for cell in _path_cells:
+		if prev.has(cell) and _is_border_cell(cell):
+			border.append(cell)
+	# 按边分组、排序、合并相邻格，得到各入口
+	var by_side := {"west": [], "north": [], "south": [], "east": []}
+	for cell in border:
+		by_side[_side_of(cell)].append(cell)
+	var result: Dictionary = {}
+	for side in by_side:
+		var cells: Array = by_side[side]
+		cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return _border_order(a, b, side as String))
+		var runs: Array[Array] = []
+		for cell in cells:
+			if runs.is_empty():
+				runs.append([cell])
+			else:
+				var last_run: Array = runs[runs.size() - 1]
+				if _border_adjacent(last_run[last_run.size() - 1], cell):
+					last_run.append(cell)
+				else:
+					runs.append([cell])
+		var extra := 0
+		for run in runs:
+			# 取该段离核心最远的边界格作为入口
+			var entrance_cell: Vector2i = run[0]
+			var best_dist := -1.0
+			for cell in run:
+				var dist: float = (cell - CORE_CELL).length()
+				if dist > best_dist:
+					best_dist = dist
+					entrance_cell = cell
+			var entrance_id: String = side
+			while result.has(entrance_id):
+				extra += 1
+				entrance_id = side + str(extra)
+			result[entrance_id] = _route_cells(prev, entrance_cell)
+	return result
+
+
+func _route_cells(prev: Dictionary, entrance_cell: Vector2i) -> Array:
+	var route: Array = []
+	var cur := entrance_cell
+	while cur.x >= 0:
+		route.append(cur)
+		cur = prev[cur]
+	return route
+
+
+func _is_border_cell(cell: Vector2i) -> bool:
+	return cell.x == 0 or cell.y == 0 or cell.x == COLS - 1 or cell.y == ROWS - 1
+
+
+func _side_of(cell: Vector2i) -> String:
+	if cell.x == 0:
+		return "west"
+	if cell.x == COLS - 1:
+		return "east"
+	if cell.y == 0:
+		return "north"
+	return "south"
+
+
+func _border_order(a: Vector2i, b: Vector2i, side: String) -> bool:
+	if side == "north" or side == "south":
+		return a.x < b.x
+	return a.y < b.y
+
+
+func _border_adjacent(a: Vector2i, b: Vector2i) -> bool:
+	return absi(a.x - b.x) + absi(a.y - b.y) == 1
+
+
+func _color_close(a: Color, b: Color, tolerance: float = COLOR_TOLERANCE) -> bool:
+	return absf(a.r - b.r) <= tolerance and absf(a.g - b.g) <= tolerance and absf(a.b - b.b) <= tolerance
 
 
 func _build_paths() -> void:
@@ -167,8 +329,17 @@ func has_entrance(entrance_id: String) -> bool:
 	return PATHS.has(entrance_id)
 
 
-func get_path_points(entrance_id: String = "west") -> PackedVector2Array:
-	return _path_world_points.get(entrance_id, _path_world_points.get(DEFAULT_ENTRANCE, PackedVector2Array())).duplicate()
+## 返回第一个可用入口 id（读像素画时入口可能不叫 west）。
+func get_first_entrance() -> String:
+	for entrance_id in PATHS:
+		return entrance_id
+	return DEFAULT_ENTRANCE
+
+
+func get_path_points(entrance_id: String = "") -> PackedVector2Array:
+	if entrance_id.is_empty() or not _path_world_points.has(entrance_id):
+		entrance_id = get_first_entrance()
+	return _path_world_points.get(entrance_id, PackedVector2Array()).duplicate()
 
 
 func get_core_world_position() -> Vector2:
@@ -305,3 +476,5 @@ func _draw_selection() -> void:
 		return
 	draw_rect(_selection_rect, Color(0.35, 0.95, 1.0, 0.16))
 	draw_rect(_selection_rect, Color("#8ef6ff"), false, 1.5)
+
+

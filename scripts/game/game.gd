@@ -516,9 +516,10 @@ func _on_wave_started(index: int, display_name: String) -> void:
 func _on_spawn_requested(enemy_id: String, hp_scale: float, entrance_id: String) -> void:
 	if phase == Phase.FINISHED:
 		return
-	var path_points := map_view.get_path_points(
-		entrance_id if map_view.has_entrance(entrance_id) else map_view.DEFAULT_ENTRANCE
-	)
+	var final_entrance := entrance_id
+	if not map_view.has_entrance(final_entrance):
+		final_entrance = map_view.DEFAULT_ENTRANCE if map_view.has_entrance(map_view.DEFAULT_ENTRANCE) else map_view.get_first_entrance()
+	var path_points := map_view.get_path_points(final_entrance)
 	var enemy: FairyEnemy = EnemyScript.new()
 	enemies.add_child(enemy)
 	enemy.setup(path_points, EnemyCatalog.get_definition(enemy_id), hp_scale)
