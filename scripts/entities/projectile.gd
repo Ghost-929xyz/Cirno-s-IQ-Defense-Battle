@@ -1,6 +1,7 @@
 class_name TowerProjectile
 extends Node2D
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
 const HitEffectScript = preload("res://scripts/effects/hit_effect.gd")
 
 var _target: Node2D
@@ -28,6 +29,7 @@ func setup(
 	_damage = damage
 	_speed = speed
 	_color = color
+	# 保留目录里的旧尺度原始值，判定时再换算为新地图尺度。
 	_splash_radius = splash_radius
 	_slow_factor = slow_factor
 	_slow_duration = slow_duration
@@ -43,7 +45,7 @@ func _process(delta: float) -> void:
 
 	var offset := _target.global_position - global_position
 	var distance := offset.length()
-	if distance <= maxf(5.0, _speed * delta):
+	if distance <= maxf(2.0, _speed * delta):
 		global_position = _target.global_position
 		_impact()
 		return
@@ -57,11 +59,12 @@ func _impact() -> void:
 	if _splash_radius <= 0.0:
 		_hit_enemy(_target)
 	else:
+		var effective_radius := Metrics.combat_range(_splash_radius)
 		for enemy_node in get_tree().get_nodes_in_group("enemies"):
 			var enemy := enemy_node as Node2D
 			if enemy == null or not is_instance_valid(enemy):
 				continue
-			if enemy.global_position.distance_to(global_position) <= _splash_radius:
+			if enemy.global_position.distance_to(global_position) <= effective_radius:
 				_hit_enemy(enemy)
 
 	_spawn_impact_effect()
@@ -84,10 +87,14 @@ func _spawn_impact_effect() -> void:
 	var container := get_parent()
 	container.add_child(effect)
 	effect.global_position = global_position
+	# HitEffect 内部统一换算旧尺度半径。
 	effect.setup(_color, maxf(12.0, _splash_radius if _splash_radius > 0.0 else 18.0))
 
 
 func _draw() -> void:
-	draw_line(Vector2(-_direction.x * 16.0, -_direction.y * 16.0), Vector2.ZERO, Color(_color.r, _color.g, _color.b, 0.28), 5.0)
-	draw_circle(Vector2.ZERO, 6.0, _color)
-	draw_circle(Vector2.ZERO, 3.0, Color.WHITE)
+	var tail_length := maxf(3.0, Metrics.art(16.0))
+	var tail_width := maxf(1.0, Metrics.art(5.0))
+	var head_radius := maxf(1.5, Metrics.art(6.0))
+	draw_line(-_direction * tail_length, Vector2.ZERO, Color(_color.r, _color.g, _color.b, 0.28), tail_width)
+	draw_circle(Vector2.ZERO, head_radius, _color)
+	draw_circle(Vector2.ZERO, maxf(1.0, head_radius * 0.45), Color.WHITE)

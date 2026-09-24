@@ -1,6 +1,8 @@
 class_name FairyEnemy
 extends Node2D
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
+
 signal defeated(enemy: FairyEnemy, reward: int, shards: int, world_position: Vector2)
 signal reached_core(enemy: FairyEnemy, leak_damage: int)
 
@@ -65,7 +67,7 @@ func _process(delta: float) -> void:
 		_combat_target = _find_combat_target()
 
 	if is_instance_valid(_combat_target):
-		var engage_range := float(definition.get("attack_range", 36.0)) + 12.0
+		var engage_range := Metrics.art(float(definition.get("attack_range", 36.0)) + 12.0)
 		if global_position.distance_to(_combat_target.global_position) > engage_range:
 			_combat_target = null
 		else:
@@ -128,7 +130,7 @@ func _find_combat_target() -> Node2D:
 		if ally == null or not is_instance_valid(ally) or not ally.is_alive():
 			continue
 		var distance := global_position.distance_to(ally.global_position)
-		if distance <= 62.0 and distance < nearest_distance:
+		if distance <= Metrics.art(62.0) and distance < nearest_distance:
 			nearest = ally
 			nearest_distance = distance
 
@@ -137,11 +139,11 @@ func _find_combat_target() -> Node2D:
 		if hero == null or not is_instance_valid(hero) or not hero.is_alive():
 			continue
 		var hero_distance := global_position.distance_to(hero.global_position)
-		if hero_distance <= 45.0 and hero_distance < nearest_distance:
+		if hero_distance <= Metrics.art(45.0) and hero_distance < nearest_distance:
 			nearest = hero
 			nearest_distance = hero_distance
 
-	var structure_reach := float(definition.get("attack_range", 36.0)) + 18.0
+	var structure_reach := Metrics.art(float(definition.get("attack_range", 36.0)) + 18.0)
 	for structure_node in get_tree().get_nodes_in_group("structures"):
 		var structure := structure_node as DefenseStructure
 		if structure == null or not is_instance_valid(structure) or not structure.is_alive():
@@ -194,11 +196,11 @@ func _reach_core() -> void:
 
 
 func _draw() -> void:
-	var radius := float(definition.get("radius", 14.0))
+	var radius := maxf(2.4, Metrics.art(float(definition.get("radius", 14.0))))
 	var body_color := Color(str(definition.get("color", "#d487e8")))
 	if _flash_remaining > 0.0:
 		body_color = body_color.lerp(Color.WHITE, 0.75)
-	var bob := sin(_bob_time * 6.5) * 2.0
+	var bob := sin(_bob_time * 6.5) * Metrics.art(2.0)
 
 	draw_circle(Vector2(0.0, radius + 4.0), radius * 0.86, Color(0.0, 0.0, 0.0, 0.2))
 	draw_colored_polygon(PackedVector2Array([
@@ -226,10 +228,12 @@ func _draw() -> void:
 		var ring_color := Color("#efffff") if _freeze_remaining > 0.0 else Color("#9fefff")
 		draw_arc(Vector2.ZERO, radius + 5.0, -PI * 0.2, PI * 1.2, 24, ring_color, 2.0)
 
-	var bar_width := maxf(30.0, radius * 2.4)
-	var bar_position := Vector2(-bar_width * 0.5, -radius - 14.0)
-	var bar_height := 6.0 if is_boss() else 5.0
-	draw_rect(Rect2(bar_position, Vector2(bar_width, bar_height)), Color(0.03, 0.06, 0.09, 0.92))
-	var ratio := clampf(current_hp / max_hp, 0.0, 1.0)
-	var bar_color := Color("#ff6b82") if is_boss() else Color("#7ef0a4")
-	draw_rect(Rect2(bar_position + Vector2(1.0, 1.0), Vector2((bar_width - 2.0) * ratio, bar_height - 2.0)), bar_color)
+	# 高密度地图只保留很小的状态条，血量主要由顶部 HUD 和受击反馈表达。
+	if current_hp < max_hp - 0.01 or is_elite() or is_boss():
+		var bar_width := maxf(6.0, radius * 2.4)
+		var bar_position := Vector2(-bar_width * 0.5, -radius - maxf(2.0, Metrics.art(14.0)))
+		var bar_height := 2.0 if is_boss() else 1.5
+		draw_rect(Rect2(bar_position, Vector2(bar_width, bar_height)), Color(0.03, 0.06, 0.09, 0.9))
+		var ratio := clampf(current_hp / max_hp, 0.0, 1.0)
+		var bar_color := Color("#ff6b82") if is_boss() else Color("#7ef0a4")
+		draw_rect(Rect2(bar_position + Vector2(0.5, 0.5), Vector2(maxf(0.5, (bar_width - 1.0) * ratio), 0.5)), bar_color)

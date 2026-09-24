@@ -1,6 +1,8 @@
 class_name AllyUnit
 extends Node2D
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
+
 signal defeated(unit: AllyUnit)
 
 const ProjectileScript = preload("res://scripts/entities/projectile.gd")
@@ -62,7 +64,7 @@ func set_garrison(anchor_world: Vector2) -> void:
 func _pick_garrison_spot() -> void:
 	if not _garrison_anchor.is_finite():
 		return
-	var cell_size := 30.0
+	var cell_size := Metrics.CELL_SIZE
 	if _owner_game != null and _owner_game.has_method("get_cell_size"):
 		cell_size = float(_owner_game.call("get_cell_size"))
 	var rng := RandomNumberGenerator.new()
@@ -117,7 +119,7 @@ func _process(delta: float) -> void:
 
 	var offset := _target.global_position - global_position
 	var distance := offset.length()
-	var attack_range := float(definition.get("attack_range", 30.0))
+	var attack_range := Metrics.combat_range(float(definition.get("attack_range", 30.0)))
 	if distance > attack_range:
 		var move_speed := float(definition.get("move_speed", 70.0))
 		global_position += offset.normalized() * minf(distance - attack_range * 0.85, move_speed * delta)
@@ -164,7 +166,7 @@ func is_alive() -> bool:
 
 func _find_target() -> FairyEnemy:
 	var nearest: FairyEnemy = null
-	var nearest_distance := AGGRO_RANGE
+	var nearest_distance := Metrics.combat_range(AGGRO_RANGE)
 	for enemy_node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := enemy_node as FairyEnemy
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
@@ -178,8 +180,9 @@ func _find_target() -> FairyEnemy:
 
 func _attack_target() -> void:
 	var damage := float(definition.get("damage", 10.0)) * _damage_multiplier
-	var attack_range := float(definition.get("attack_range", 30.0))
-	if attack_range <= 35.0:
+	# 目录仍保存旧尺度原始射程；<=35 用于区分近战，其他判定再换算到屏幕像素。
+	var raw_attack_range := float(definition.get("attack_range", 30.0))
+	if raw_attack_range <= 35.0:
 		_target.take_damage(damage)
 		if _owner_game != null:
 			_owner_game.spawn_hit_effect(_target.global_position, Color(str(definition.get("attack_color", "#e8ffff"))), 18.0)
@@ -208,38 +211,42 @@ func _die() -> void:
 
 
 func _draw() -> void:
+	var radius := maxf(3.0, Metrics.cells(0.72))
 	if _selected:
-		draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 32, Color(0.45, 0.96, 1.0, 0.9), 2.0)
-		draw_circle(Vector2.ZERO, 17.0, Color(0.45, 0.96, 1.0, 0.07))
+		var selection_radius := maxf(5.0, radius * 1.65)
+		draw_arc(Vector2.ZERO, selection_radius, 0.0, TAU, 32, Color(0.45, 0.96, 1.0, 0.9), 1.5)
+		draw_circle(Vector2.ZERO, selection_radius, Color(0.45, 0.96, 1.0, 0.07))
 
 	var color := Color(str(definition.get("color", "#82d7ee")))
 	if _flash_remaining > 0.0:
 		color = color.lerp(Color.WHITE, 0.72)
-	var bob := sin(_bob_time * 7.0) * 1.2
-	draw_circle(Vector2(0.0, 9.0), 12.0, Color(0.0, 0.0, 0.0, 0.2))
+	var bob := sin(_bob_time * 7.0) * 0.55
+	draw_circle(Vector2(0.0, radius * 0.9 + bob), radius * 1.12, Color(0.0, 0.0, 0.0, 0.2))
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(-7, bob - 2),
-		Vector2(-16, bob - 10),
-		Vector2(-5, bob - 11),
+		Vector2(-radius * 0.7, bob - radius * 0.2),
+		Vector2(-radius * 1.7, bob - radius),
+		Vector2(-radius * 0.5, bob - radius * 1.1),
 	]), Color(color.r, color.g, color.b, 0.5))
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(7, bob - 2),
-		Vector2(16, bob - 10),
-		Vector2(5, bob - 11),
+		Vector2(radius * 0.7, bob - radius * 0.2),
+		Vector2(radius * 1.7, bob - radius),
+		Vector2(radius * 0.5, bob - radius * 1.1),
 	]), Color(color.r, color.g, color.b, 0.5))
-	draw_circle(Vector2(0.0, bob), 10.0, color)
-	draw_circle(Vector2(-4.0, -3.0 + bob), 1.7, Color("#21324c"))
-	draw_circle(Vector2(4.0, -3.0 + bob), 1.7, Color("#21324c"))
+	draw_circle(Vector2(0.0, bob), radius, color)
+	draw_circle(Vector2(-radius * 0.4, -radius * 0.3 + bob), maxf(0.7, radius * 0.17), Color("#21324c"))
+	draw_circle(Vector2(radius * 0.4, -radius * 0.3 + bob), maxf(0.7, radius * 0.17), Color("#21324c"))
 	var unit_id := str(definition.get("id", "ice_guard"))
 	if unit_id == "ice_guard":
-		draw_line(Vector2(6.0, 4.0), Vector2(13.0, 16.0), Color("#efffff"), 3.0)
+		draw_line(Vector2(radius * 0.6, radius * 0.4 + bob), Vector2(radius * 1.3, radius * 1.6 + bob), Color("#efffff"), maxf(1.0, radius * 0.3))
 	elif unit_id == "mist_archer":
-		draw_arc(Vector2(9.0, 2.0), 8.0, -PI * 0.55, PI * 0.55, 12, Color("#efffff"), 2.0)
+		draw_arc(Vector2(radius * 0.9, bob), radius * 0.8, -PI * 0.55, PI * 0.55, 12, Color("#efffff"), 1.0)
 	else:
-		draw_circle(Vector2(9.0, 3.0), 5.0, Color("#e4d9ff"))
-		draw_circle(Vector2(9.0, 3.0), 2.0, Color.WHITE)
+		draw_circle(Vector2(radius * 0.9, radius * 0.3 + bob), radius * 0.5, Color("#e4d9ff"))
+		draw_circle(Vector2(radius * 0.9, radius * 0.3 + bob), maxf(0.8, radius * 0.2), Color.WHITE)
 
-	var bar_width := 26.0
-	var bar_position := Vector2(-bar_width * 0.5, -20.0)
-	draw_rect(Rect2(bar_position, Vector2(bar_width, 4.0)), Color(0.02, 0.05, 0.09, 0.9))
-	draw_rect(Rect2(bar_position + Vector2(1.0, 1.0), Vector2((bar_width - 2.0) * clampf(current_hp / max_hp, 0.0, 1.0), 2.0)), Color("#87ecff"))
+	# 满血且未选中时隐藏世界血条，减少高密度战场遮挡。
+	if current_hp < max_hp - 0.01 or _selected:
+		var bar_width := maxf(6.0, radius * 2.6)
+		var bar_position := Vector2(-bar_width * 0.5, -radius - 2.0 + bob)
+		draw_rect(Rect2(bar_position, Vector2(bar_width, 1.5)), Color(0.02, 0.05, 0.09, 0.9))
+		draw_rect(Rect2(bar_position + Vector2(0.5, 0.5), Vector2(maxf(0.5, (bar_width - 1.0) * clampf(current_hp / maxf(1.0, max_hp), 0.0, 1.0)), 0.5)), Color("#87ecff"))

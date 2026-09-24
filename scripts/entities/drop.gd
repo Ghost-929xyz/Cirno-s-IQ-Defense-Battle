@@ -4,6 +4,8 @@ extends Node2D
 ## 精英敌人掉落的附魔拾取物：十字芒星、高亮脉冲。
 ## 击杀精英后生成在世界坐标，玩家左键点击拾取后触发附魔三选一。
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
+
 var shards := 1
 var _age := 0.0
 
@@ -21,13 +23,13 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var pulse := 0.5 + 0.5 * sin(_age * 5.2)
-	var outer := 15.0 + pulse * 4.5
-	var inner := 5.5 + pulse * 1.5
+	var outer := maxf(4.0, Metrics.art(15.0 + pulse * 4.5))
+	var inner := maxf(2.0, Metrics.art(5.5 + pulse * 1.5))
 
 	# 光晕（高亮脉冲）
 	var halo := Color(1.0, 0.95, 0.55, 0.16 + pulse * 0.10)
-	draw_circle(Vector2.ZERO, outer + 6.0, halo)
-	draw_circle(Vector2.ZERO, outer + 2.0, Color(1.0, 0.95, 0.55, 0.08))
+	draw_circle(Vector2.ZERO, outer + Metrics.art(6.0), halo)
+	draw_circle(Vector2.ZERO, outer + Metrics.art(2.0), Color(1.0, 0.95, 0.55, 0.08))
 
 	# 十字芒星：8 个顶点，长轴（十字）+ 短轴（斜芒）交替
 	var points := PackedVector2Array()
@@ -40,10 +42,10 @@ func _draw() -> void:
 	var cross := PackedVector2Array()
 	for i in range(4):
 		var angle := TAU * float(i) / 4.0
-		cross.append(Vector2.from_angle(angle) * (outer + 3.0))
+		cross.append(Vector2.from_angle(angle) * (outer + Metrics.art(3.0)))
 	cross.append(cross[0])
-	draw_polyline(cross, Color("#fff6c8"), 3.0, true)
+	draw_polyline(cross, Color("#fff6c8"), maxf(1.0, Metrics.art(3.0)), true)
 	# 中心亮点
 	draw_circle(Vector2.ZERO, inner * 0.7, Color("#fffdf2"))
 	# 外圈细描边
-	draw_arc(Vector2.ZERO, outer + 8.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.4, 0.5 + pulse * 0.3), 1.5)
+	draw_arc(Vector2.ZERO, outer + Metrics.art(8.0), 0.0, TAU, 32, Color(1.0, 0.85, 0.4, 0.5 + pulse * 0.3), maxf(1.0, Metrics.art(1.5)))

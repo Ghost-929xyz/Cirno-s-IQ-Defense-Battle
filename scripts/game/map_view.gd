@@ -1,24 +1,28 @@
 class_name LakeMapView
 extends Node2D
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
+
 ## 地图视图：可从像素画 PNG 读取地图，也可用内置默认地图。
-## 像素画规则：1 像素 = 1 格；颜色含义见下方 COLOR_* 与 assets/maps/README_绘制说明.md。
+## 像素画规则：每 2×2 个图像像素 = 1 个逻辑格；颜色含义见下方 COLOR_*。
 ## 若 assets/maps/map.png 存在且合法，则优先使用它；否则回退到内置默认地图。
 
 ## 像素画文件路径（相对 res://）。改成你自己的图后，启动游戏即自动生效。
 const MAP_IMAGE_PATH := "res://assets/maps/map.png"
+## 地图画布密度：256×192 像素 → 128×96 个逻辑格。
+const MAP_PIXELS_PER_CELL := 2
 const COLOR_PATH := Color("#0a0f14")    # 深色 = 路径（敌人行走，不可建造）
 const COLOR_CORE := Color("#ffe26b")    # 黄色 = IQ 结晶（只能有 1 格）
 const COLOR_SPAWN := Color("#7ef0a4")   # 绿色 = 琪露诺出生点
 const COLOR_LAND := Color("#4a5d68")    # 模板用灰色 = 空地（可建造；其它任意颜色也可以）
 const COLOR_TOLERANCE := 0.18           # 颜色容差，避免画图软件轻微变色后读不到
 
-## 内置默认地图参数（仅在读不到像素画时使用）
-const DEFAULT_COLS := 20
-const DEFAULT_ROWS := 15
-const CELL_SIZE := 30.0
-const DEFAULT_CORE_CELL := Vector2i(10, 7)
-const DEFAULT_HERO_SPAWN_CELL := Vector2i(1, 12)
+## 固定单屏尺寸下的逻辑网格参数。
+const DEFAULT_COLS := Metrics.MAP_COLS
+const DEFAULT_ROWS := Metrics.MAP_ROWS
+const CELL_SIZE := Metrics.CELL_SIZE
+const DEFAULT_CORE_CELL := Vector2i(64, 48)
+const DEFAULT_HERO_SPAWN_CELL := Vector2i(12, 84)
 const DEFAULT_ENTRANCE := "west"
 const ENTRANCE_LABELS := {
 	"west": "西",
@@ -26,27 +30,39 @@ const ENTRANCE_LABELS := {
 	"south": "南",
 	"east": "东",
 }
-## 路宽约 2 格（1 格半宽），保证空地留有充足的建造区域。
-const PATH_HALF_WIDTH := 0.9
-const PATH_SEGMENT_CELLS := 1.0
+## 道路宽约 5 格（半宽 2 格），满足新地图密度下的主路宽度。
+const PATH_HALF_WIDTH := 2.1
+const PATH_SEGMENT_CELLS := 2.0
+## 新地图的细网格只每隔若干格绘制一次，避免密集网格遮挡像素画。
+const GRID_STEP_CELLS := 4
+## 建造预览占地必须与实际判定一致：兵营 2×2，防御塔 3×3。
+const BARRACKS_PREVIEW_OFFSETS := [
+	Vector2i(0, 0), Vector2i(1, 0),
+	Vector2i(0, 1), Vector2i(1, 1),
+]
+const TOWER_PREVIEW_OFFSETS := [
+	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
+	Vector2i(-1, 0), Vector2i(0, 0), Vector2i(1, 0),
+	Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1),
+]
 
 ## 内置默认地图：各入口的路径关键点（格坐标），经 Catmull-Rom 平滑成弯曲曲线。
 const DEFAULT_PATHS := {
 	"west": [
-		Vector2i(0, 7), Vector2i(3, 7), Vector2i(3, 4), Vector2i(6, 4),
-		Vector2i(6, 7), Vector2i(10, 7),
+		Vector2i(0, 48), Vector2i(18, 48), Vector2i(30, 38),
+		Vector2i(48, 38), Vector2i(60, 47), Vector2i(64, 48),
 	],
 	"north": [
-		Vector2i(10, 0), Vector2i(10, 3), Vector2i(8, 3), Vector2i(8, 5),
-		Vector2i(10, 7),
+		Vector2i(64, 0), Vector2i(64, 18), Vector2i(56, 27),
+		Vector2i(56, 37), Vector2i(64, 48),
 	],
 	"south": [
-		Vector2i(3, 14), Vector2i(3, 11), Vector2i(6, 11), Vector2i(6, 8),
-		Vector2i(10, 7),
+		Vector2i(40, 95), Vector2i(38, 78), Vector2i(46, 66),
+		Vector2i(57, 58), Vector2i(64, 48),
 	],
 	"east": [
-		Vector2i(19, 7), Vector2i(16, 7), Vector2i(16, 4), Vector2i(13, 4),
-		Vector2i(13, 7), Vector2i(10, 7),
+		Vector2i(127, 48), Vector2i(109, 44), Vector2i(96, 32),
+		Vector2i(82, 36), Vector2i(72, 43), Vector2i(64, 48),
 	],
 }
 
@@ -59,8 +75,11 @@ var HERO_SPAWN_CELL := DEFAULT_HERO_SPAWN_CELL
 var PATHS: Dictionary = {}
 
 var hover_cell := Vector2i(-99, -99)
-var selected_tower_id := "icicle"
+var build_preview_id := "icicle"
 var _path_cells: Dictionary = {}
+var _image_path_cells: Dictionary = {}
+var _uses_image_map := false
+var _map_texture: ImageTexture
 var _path_local_points: Dictionary = {}
 var _path_world_points: Dictionary = {}
 var _selection_rect := Rect2()
@@ -82,8 +101,11 @@ func _load_map_from_image() -> bool:
 	if img.load(ProjectSettings.globalize_path(MAP_IMAGE_PATH)) != OK:
 		push_warning("地图像素画读取失败: %s" % MAP_IMAGE_PATH)
 		return false
-	COLS = img.get_width()
-	ROWS = img.get_height()
+	if img.get_width() % MAP_PIXELS_PER_CELL != 0 or img.get_height() % MAP_PIXELS_PER_CELL != 0:
+		push_warning("地图像素画宽高必须是 %d 的倍数" % MAP_PIXELS_PER_CELL)
+		return false
+	COLS = int(img.get_width() / MAP_PIXELS_PER_CELL)
+	ROWS = int(img.get_height() / MAP_PIXELS_PER_CELL)
 	if COLS < 4 or ROWS < 4:
 		push_warning("地图像素画尺寸过小（至少 4x4 格）")
 		return false
@@ -93,25 +115,39 @@ func _load_map_from_image() -> bool:
 	var spawn := Vector2i(-1, -1)
 	for y in range(ROWS):
 		for x in range(COLS):
-			var c := img.get_pixel(x, y)
+			# 每个逻辑格读取 2×2 像素块的中心；画图时请让每个块保持同色。
+			var sample_x := x * MAP_PIXELS_PER_CELL + int(MAP_PIXELS_PER_CELL / 2)
+			var sample_y := y * MAP_PIXELS_PER_CELL + int(MAP_PIXELS_PER_CELL / 2)
+			var c := img.get_pixel(sample_x, sample_y)
 			if c.a < 0.5:
-				continue  # 透明 = 空地
+				continue
 			var cell := Vector2i(x, y)
 			if _color_close(c, COLOR_CORE):
-				core = cell
+				if core.x < 0:
+					core = cell
 			elif _color_close(c, COLOR_SPAWN):
-				spawn = cell
+				if spawn.x < 0:
+					spawn = cell
 			elif _color_close(c, COLOR_PATH):
 				path_cells[cell] = true
 	if core.x < 0:
 		push_warning("地图像素画里没有核心色（黄），回退到默认地图")
 		return false
 	CORE_CELL = core
-	HERO_SPAWN_CELL = spawn if spawn.x >= 0 else DEFAULT_HERO_SPAWN_CELL
-	_path_cells = path_cells
+	HERO_SPAWN_CELL = spawn if spawn.x >= 0 else Vector2i(
+		clampi(DEFAULT_HERO_SPAWN_CELL.x, 0, COLS - 1),
+		clampi(DEFAULT_HERO_SPAWN_CELL.y, 0, ROWS - 1)
+	)
+	_image_path_cells = path_cells.duplicate()
+	_uses_image_map = true
+	_map_texture = ImageTexture.create_from_image(img)
+	_path_cells = path_cells.duplicate()
 	PATHS = _derive_paths_from_cells()
 	if PATHS.is_empty():
 		push_warning("地图像素画里没有能从边界通向核心的路径，回退到默认地图")
+		_uses_image_map = false
+		_image_path_cells.clear()
+		_map_texture = null
 		return false
 	return true
 
@@ -123,6 +159,9 @@ func _setup_default_map() -> void:
 	CORE_CELL = DEFAULT_CORE_CELL
 	HERO_SPAWN_CELL = DEFAULT_HERO_SPAWN_CELL
 	PATHS = DEFAULT_PATHS.duplicate(true)
+	_image_path_cells.clear()
+	_uses_image_map = false
+	_map_texture = null
 
 
 ## 从像素画路格自动推导：入口（边界路格）→ 核心 的路径。
@@ -166,14 +205,8 @@ func _derive_paths_from_cells() -> Dictionary:
 					runs.append([cell])
 		var extra := 0
 		for run in runs:
-			# 取该段离核心最远的边界格作为入口
-			var entrance_cell: Vector2i = run[0]
-			var best_dist := -1.0
-			for cell in run:
-				var dist: float = (cell - CORE_CELL).length()
-				if dist > best_dist:
-					best_dist = dist
-					entrance_cell = cell
+			# 取宽路入口段的中线格，避免敌人从路缘贴边出生。
+			var entrance_cell: Vector2i = run[run.size() / 2]
 			var entrance_id: String = side
 			while result.has(entrance_id):
 				extra += 1
@@ -220,11 +253,16 @@ func _color_close(a: Color, b: Color, tolerance: float = COLOR_TOLERANCE) -> boo
 
 
 func _build_paths() -> void:
-	_path_cells.clear()
+	# 像素画中的道路格是玩家画出的真实占地区域；默认地图则从路径曲线光栅化。
+	_path_cells = _image_path_cells.duplicate() if _uses_image_map else {}
+	_path_local_points.clear()
+	_path_world_points.clear()
 	for entrance_id in PATHS:
 		var waypoints := _to_float_points(PATHS[entrance_id])
 		var dense := _sample_catmull_rom(waypoints, 2.0)
-		_rasterize_path(dense)
+		# 玩家像素画的路径格就是权威占地；不要用平滑线额外扩张可建造边界。
+		if not _uses_image_map:
+			_rasterize_path(dense)
 		# 敌人移动点：沿曲线每 PATH_SEGMENT_CELLS 格取一个点
 		var movement := PackedVector2Array()
 		var last_local := Vector2(-1.0e9, -1.0e9)
@@ -320,6 +358,13 @@ func cell_to_local(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * CELL_SIZE + CELL_SIZE * 0.5, cell.y * CELL_SIZE + CELL_SIZE * 0.5)
 
 
+func cell_position_to_local(cell_position: Vector2) -> Vector2:
+	return Vector2(
+		(cell_position.x + 0.5) * CELL_SIZE,
+		(cell_position.y + 0.5) * CELL_SIZE
+	)
+
+
 func world_to_cell(world_position: Vector2) -> Vector2i:
 	var local_position := to_local(world_position)
 	return Vector2i(int(floor(local_position.x / CELL_SIZE)), int(floor(local_position.y / CELL_SIZE)))
@@ -386,8 +431,8 @@ func set_hover_cell(cell: Vector2i) -> void:
 	queue_redraw()
 
 
-func set_selected_tower_id(tower_id: String) -> void:
-	selected_tower_id = tower_id
+func set_build_preview(build_id: String) -> void:
+	build_preview_id = build_id
 	queue_redraw()
 
 
@@ -414,24 +459,38 @@ func distance_in_cells(a: Vector2, b: Vector2) -> float:
 
 
 func _draw() -> void:
-	# 外框与空地底色（空地保持简洁素色，不装饰）
-	draw_rect(Rect2(Vector2(-6.0, -6.0), BOARD_SIZE + Vector2(12.0, 12.0)), Color("#050d18"))
-	draw_rect(Rect2(Vector2.ZERO, BOARD_SIZE), Color("#17313a"))
+	# 外框与地图底色。
+	draw_rect(Rect2(Vector2(-4.0, -4.0), BOARD_SIZE + Vector2(8.0, 8.0)), Color("#050d18"))
+	if _map_texture != null:
+		# 玩家绘制的像素画原样显示；最近邻采样保留 2×2 像素块的硬边。
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		draw_texture_rect(_map_texture, Rect2(Vector2.ZERO, BOARD_SIZE), false)
+	else:
+		draw_rect(Rect2(Vector2.ZERO, BOARD_SIZE), Color("#17313a"))
 
-	# 细网格线（提升像素密度感）
-	var grid_color := Color(0.55, 0.82, 0.95, 0.06)
-	for x in range(COLS + 1):
-		var px := x * CELL_SIZE
-		draw_line(Vector2(px, 0.0), Vector2(px, BOARD_SIZE.y), grid_color, 1.0)
-	for y in range(ROWS + 1):
-		var py := y * CELL_SIZE
-		draw_line(Vector2(0.0, py), Vector2(BOARD_SIZE.x, py), grid_color, 1.0)
+	# 内置默认地图使用稀疏网格辅助定位；玩家像素画不额外压网格。
+	if _map_texture == null:
+		var grid_color := Color(0.55, 0.82, 0.95, 0.055)
+		for x in range(0, COLS + 1, GRID_STEP_CELLS):
+			var px := x * CELL_SIZE
+			draw_line(Vector2(px, 0.0), Vector2(px, BOARD_SIZE.y), grid_color, 1.0)
+		for y in range(0, ROWS + 1, GRID_STEP_CELLS):
+			var py := y * CELL_SIZE
+			draw_line(Vector2(0.0, py), Vector2(BOARD_SIZE.x, py), grid_color, 1.0)
 
-	# 深色弯曲路径：深色宽底 + 较亮内线，与空地形成对比
-	for entrance_id in _path_local_points:
-		var points := _path_local_points[entrance_id] as PackedVector2Array
-		draw_polyline(points, Color("#0a131d"), PATH_HALF_WIDTH * 2.0 * CELL_SIZE, true)
-		draw_polyline(points, Color("#3d6a80"), 1.1 * CELL_SIZE, true)
+	# 默认地图直接绘制路径格；像素画已包含路径颜色，保留原画不覆盖。
+	if _map_texture == null:
+		for path_cell in _path_cells:
+			var cell := path_cell as Vector2i
+			draw_rect(
+				Rect2(Vector2(cell.x * CELL_SIZE, cell.y * CELL_SIZE), Vector2(CELL_SIZE + 0.5, CELL_SIZE + 0.5)),
+				COLOR_PATH
+			)
+	# 内置地图补一条路心线；玩家像素画保留原稿，不覆盖用户画的道路。
+	if _map_texture == null:
+		for entrance_id in _path_local_points:
+			var points := _path_local_points[entrance_id] as PackedVector2Array
+			draw_polyline(points, Color("#17313d"), 1.25 * CELL_SIZE, true)
 
 	_draw_spawn_and_core()
 	_draw_hover()
@@ -445,36 +504,42 @@ func _draw_spawn_and_core() -> void:
 		var spawn := cell_to_local(nodes[0])
 		var direction := (cell_to_local(nodes[1]) - spawn).normalized()
 		var angle := direction.angle()
-		var marker_radius := 0.85 * CELL_SIZE
+		var marker_radius := 1.15 * CELL_SIZE
 		draw_circle(spawn, marker_radius, Color(0.18, 0.85, 1.0, 0.16))
-		draw_arc(spawn, marker_radius * 0.9, angle - 1.1, angle + 1.1, 24, Color("#9cecff"), 2.0)
+		draw_arc(spawn, marker_radius * 0.9, angle - 1.1, angle + 1.1, 20, Color("#9cecff"), 1.5)
 		var label_position := spawn + direction * (marker_radius * 1.9)
-		draw_string(font, label_position + Vector2(-10.0, 5.0), str(ENTRANCE_LABELS.get(entrance_id, "?")), HORIZONTAL_ALIGNMENT_CENTER, 30.0, 12, Color("#dcf8ff"))
+		draw_string(font, label_position + Vector2(-8.0, 4.0), str(ENTRANCE_LABELS.get(entrance_id, "?")), HORIZONTAL_ALIGNMENT_CENTER, 18.0, 12, Color("#dcf8ff"))
 
 	var core_position := cell_to_local(CORE_CELL)
-	var core_radius := 1.0 * CELL_SIZE
+	var core_radius := 1.65 * CELL_SIZE
 	draw_circle(core_position, core_radius, Color("#9eeeff"))
 	draw_circle(core_position, core_radius * 0.72, Color("#2faee0"))
 	draw_line(core_position + Vector2(-core_radius * 0.55, 0), core_position + Vector2(core_radius * 0.55, 0), Color("#effcff"), 2.0)
 	draw_line(core_position + Vector2(0, -core_radius * 0.55), core_position + Vector2(0, core_radius * 0.55), Color("#effcff"), 2.0)
-	draw_string(font, core_position + Vector2(-24.0, core_radius + 14.0), "IQ 结晶", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#dcf8ff"))
+	draw_string(font, core_position + Vector2(-18.0, core_radius + 15.0), "IQ 结晶", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#dcf8ff"))
 
 
 func _draw_hover() -> void:
 	if not is_inside(hover_cell):
 		return
-	var rect := Rect2(Vector2(hover_cell.x * CELL_SIZE, hover_cell.y * CELL_SIZE), Vector2(CELL_SIZE, CELL_SIZE)).grow(-1.0)
-	var valid_color := Color("#9ff4ff") if is_buildable(hover_cell) else Color("#ff6b83")
-	draw_rect(rect, Color(valid_color.r, valid_color.g, valid_color.b, 0.30))
-	draw_rect(rect, valid_color, false, 1.5)
-	var center := cell_to_local(hover_cell)
-	draw_arc(center, CELL_SIZE * 0.95, 0.0, TAU, 24, Color(valid_color.r, valid_color.g, valid_color.b, 0.7), 1.5)
-
+	var offsets: Array = BARRACKS_PREVIEW_OFFSETS if build_preview_id.ends_with("_barracks") else TOWER_PREVIEW_OFFSETS
+	var footprint_valid := true
+	for offset in offsets:
+		var cell: Vector2i = hover_cell + offset
+		if not is_buildable(cell):
+			footprint_valid = false
+			break
+	var valid_color := Color("#9ff4ff") if footprint_valid else Color("#ff6b83")
+	for offset in offsets:
+		var cell: Vector2i = hover_cell + offset
+		if not is_inside(cell):
+			continue
+		var rect := Rect2(Vector2(cell.x * CELL_SIZE, cell.y * CELL_SIZE), Vector2(CELL_SIZE, CELL_SIZE)).grow(-0.5)
+		draw_rect(rect, Color(valid_color.r, valid_color.g, valid_color.b, 0.30))
+		draw_rect(rect, valid_color, false, 1.0)
 
 func _draw_selection() -> void:
 	if not _has_selection:
 		return
 	draw_rect(_selection_rect, Color(0.35, 0.95, 1.0, 0.16))
 	draw_rect(_selection_rect, Color("#8ef6ff"), false, 1.5)
-
-

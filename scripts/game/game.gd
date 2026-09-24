@@ -1,6 +1,8 @@
 class_name FogLakeLevel
 extends Node2D
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
+
 const TowerScript = preload("res://scripts/entities/tower.gd")
 const BarracksScript = preload("res://scripts/entities/barracks.gd")
 const EnemyScript = preload("res://scripts/entities/enemy.gd")
@@ -15,16 +17,19 @@ const FROST_START := 180.0
 ## 需求 7：寒气自增速度降低 50%（5.0 → 2.5）。
 const PREP_FROST_PER_SECOND := 2.5
 
-## 需求 6：兵营占地 3×3（锚点 ±1 格）。
-const BARRACKS_HALF_CELLS := 1
-## 需求 6：防御塔五行 13531（菱形 13 格）。
-const TOWER_FOOTPRINT := [
-	Vector2i(0, -2),
-	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
-	Vector2i(-2, 0), Vector2i(-1, 0), Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
-	Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1),
-	Vector2i(0, 2),
+## 新地图需求：兵营 2×2 格，共 4 格。
+const BARRACKS_FOOTPRINT := [
+	Vector2i(0, 0), Vector2i(1, 0),
+	Vector2i(0, 1), Vector2i(1, 1),
 ]
+## 新地图需求：防御塔 3×3 格，共 9 格。
+const TOWER_FOOTPRINT := [
+	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
+	Vector2i(-1, 0), Vector2i(0, 0), Vector2i(1, 0),
+	Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1),
+]
+## 地图固定铺在 600×450 的单屏地图区，不创建/移动镜头。
+const MAP_VIEW_SIZE := Metrics.MAP_SCREEN_SIZE
 
 enum Phase {
 	PREP,
@@ -91,6 +96,7 @@ func _ready() -> void:
 
 	_setup_tutorial()
 	_spawn_hero()
+	map_view.set_build_preview(_selected_build_id)
 	hud.select_build_item(_selected_build_id)
 	_refresh_hud()
 
@@ -252,7 +258,7 @@ func _handle_left_click(world_position: Vector2) -> void:
 	if unit != null:
 		_set_selection([unit])
 		return
-	if is_instance_valid(_hero) and _hero.is_alive() and world_position.distance_to(_hero.global_position) <= 26.0:
+	if is_instance_valid(_hero) and _hero.is_alive() and world_position.distance_to(_hero.global_position) <= Metrics.art(26.0):
 		_set_selection([_hero])
 		return
 
@@ -296,7 +302,7 @@ func _handle_right_click(world_position: Vector2) -> void:
 
 func _pick_up_drop(world_position: Vector2) -> bool:
 	var nearest_drop: EnchantDrop = null
-	var nearest_distance := 40.0
+	var nearest_distance := Metrics.art(40.0)
 	for drop_node in drops.get_children():
 		var drop := drop_node as EnchantDrop
 		if drop == null or not is_instance_valid(drop):
@@ -321,6 +327,7 @@ func _on_build_item_selected(build_id: String) -> void:
 	if not BuildCatalog.ORDER.has(build_id):
 		return
 	_selected_build_id = build_id
+	map_view.set_build_preview(build_id)
 	_clear_selection()
 	var definition := BuildCatalog.get_definition(build_id)
 	_status_text = "已选择 %s，点击草地格部署。" % str(definition.get("name", build_id))
@@ -351,7 +358,9 @@ func _try_build_structure(cell: Vector2i) -> void:
 	else:
 		structure = BarracksScript.new()
 		barracks_container.add_child(structure)
-	structure.global_position = map_view.to_global(map_view.cell_to_local(cell))
+	structure.global_position = map_view.to_global(
+		map_view.cell_position_to_local(_get_footprint_center(_selected_build_id, cell))
+	)
 	structure.setup(self, definition)
 	structure.destroyed.connect(_on_structure_destroyed)
 	_sync_structure_modifiers(structure)
@@ -368,13 +377,19 @@ func _try_build_structure(cell: Vector2i) -> void:
 func _get_footprint_cells(build_id: String, anchor: Vector2i) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
 	if BuildCatalog.is_barracks(build_id):
-		for dy in range(-BARRACKS_HALF_CELLS, BARRACKS_HALF_CELLS + 1):
-			for dx in range(-BARRACKS_HALF_CELLS, BARRACKS_HALF_CELLS + 1):
-				cells.append(anchor + Vector2i(dx, dy))
+		for offset in BARRACKS_FOOTPRINT:
+			cells.append(anchor + offset)
 	else:
 		for offset in TOWER_FOOTPRINT:
 			cells.append(anchor + offset)
 	return cells
+
+
+## 偶数尺寸兵营以 2×2 中心摆放；奇数尺寸防御塔直接以锚点为中心。
+func _get_footprint_center(build_id: String, anchor: Vector2i) -> Vector2:
+	if BuildCatalog.is_barracks(build_id):
+		return Vector2(anchor) + Vector2(0.5, 0.5)
+	return Vector2(anchor)
 
 
 func _footprint_valid(cells: Array[Vector2i]) -> bool:
@@ -447,7 +462,7 @@ func _select_objects_in_rect(rect: Rect2) -> void:
 
 func _find_ally_at(world_position: Vector2) -> AllyUnit:
 	var nearest: AllyUnit = null
-	var nearest_distance := 22.0
+	var nearest_distance := Metrics.art(22.0)
 	for ally_node in get_tree().get_nodes_in_group("allies"):
 		var ally := ally_node as AllyUnit
 		if ally == null or not is_instance_valid(ally) or not ally.is_alive():
@@ -470,7 +485,7 @@ func _find_structure_at(cell: Vector2i) -> DefenseStructure:
 
 func _find_enemy_at(world_position: Vector2) -> FairyEnemy:
 	var nearest: FairyEnemy = null
-	var nearest_distance := 34.0
+	var nearest_distance := Metrics.art(34.0)
 	for enemy_node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := enemy_node as FairyEnemy
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
@@ -704,10 +719,11 @@ func _get_build_cost(definition: Dictionary) -> int:
 func _get_unit_spawn_position(origin: Vector2) -> Vector2:
 	var nearest_path := map_view.get_closest_path_world_position(origin)
 	var offset := nearest_path - origin
-	if offset.length() > 58.0:
-		offset = offset.normalized() * 58.0
-	var result := origin + offset + Vector2(0.0, 18.0)
-	var play_rect := map_view.get_play_rect().grow(-15.0)
+	var max_offset := Metrics.art(58.0)
+	if offset.length() > max_offset:
+		offset = offset.normalized() * max_offset
+	var result := origin + offset + Vector2(0.0, Metrics.art(18.0))
+	var play_rect := map_view.get_play_rect().grow(-Metrics.art(15.0))
 	return Vector2(clampf(result.x, play_rect.position.x, play_rect.end.x), clampf(result.y, play_rect.position.y, play_rect.end.y))
 
 

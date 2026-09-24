@@ -45,7 +45,7 @@ func get_detail_text() -> String:
 		int(ceil(current_hp)),
 		int(max_hp),
 		int(round(float(definition.get("current_damage", 0.0)))),
-		range_pixels / 30.0,
+		range_pixels / Metrics.CELL_SIZE,
 		attack_interval,
 	]
 
@@ -61,7 +61,7 @@ func _apply_modifiers(modifiers: Dictionary) -> void:
 func _recalculate_stats() -> void:
 	super._recalculate_stats()
 	max_hp *= _health_multiplier
-	range_pixels = float(definition.get("range_cells", 2.5)) * 30.0 * (1.0 + (level - 1) * 0.08)
+	range_pixels = Metrics.combat_range(float(definition.get("range_cells", 2.5)) * Metrics.REFERENCE_CELL_SIZE * (1.0 + (level - 1) * 0.08))
 	var damage := float(definition.get("damage", 10.0)) * (1.0 + (level - 1) * 0.34) * _damage_multiplier
 	attack_interval = float(definition.get("cooldown", 1.0)) / (1.0 + (level - 1) * 0.12) / _attack_speed_multiplier
 	fire_cooldown = minf(fire_cooldown, attack_interval)
@@ -111,29 +111,34 @@ func _fire_at(target: Node2D) -> void:
 func _draw() -> void:
 	if selected or hovered:
 		draw_circle(Vector2.ZERO, range_pixels, Color(0.45, 0.9, 1.0, 0.075))
-		draw_arc(Vector2.ZERO, range_pixels, 0.0, TAU, 64, Color(0.62, 0.94, 1.0, 0.72), 2.0)
+		draw_arc(Vector2.ZERO, range_pixels, 0.0, TAU, 64, Color(0.62, 0.94, 1.0, 0.72), 1.5)
 
+	var body_radius := maxf(5.4, Metrics.cells(1.25))
 	var base_color := Color(str(definition.get("color", "#8fe9ff")))
 	if _flash_remaining > 0.0:
 		base_color = base_color.lerp(Color.WHITE, 0.72)
-	draw_circle(Vector2(0.0, 8.0), 24.0, Color(0.01, 0.06, 0.12, 0.48))
-	draw_circle(Vector2.ZERO, 23.0, Color("#e7fbff"))
-	draw_circle(Vector2.ZERO, 19.0, base_color)
+	draw_circle(Vector2(0.0, body_radius * 0.35), body_radius * 1.05, Color(0.01, 0.06, 0.12, 0.48))
+	draw_circle(Vector2.ZERO, body_radius, Color("#e7fbff"))
+	draw_circle(Vector2.ZERO, body_radius * 0.82, base_color)
 
 	var tower_id := str(definition.get("id", "icicle"))
 	if tower_id == "icicle":
-		draw_colored_polygon(PackedVector2Array([Vector2(-7, 9), Vector2(0, 28), Vector2(7, 9)]), Color("#eefeff"))
-		draw_circle(Vector2.ZERO, 10.0, Color("#5fbee9"))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-body_radius * 0.3, body_radius * 0.4),
+			Vector2(0.0, body_radius * 1.35),
+			Vector2(body_radius * 0.3, body_radius * 0.4),
+		]), Color("#eefeff"))
+		draw_circle(Vector2.ZERO, body_radius * 0.43, Color("#5fbee9"))
 	elif tower_id == "rime":
 		for angle_index in range(6):
 			var angle := TAU * float(angle_index) / 6.0
-			draw_line(Vector2.ZERO, Vector2.from_angle(angle) * 20.0, Color("#efffff"), 3.0)
-		draw_circle(Vector2.ZERO, 7.0, Color("#82e9ed"))
+			draw_line(Vector2.ZERO, Vector2.from_angle(angle) * (body_radius * 0.9), Color("#efffff"), 1.5)
+		draw_circle(Vector2.ZERO, body_radius * 0.3, Color("#82e9ed"))
 	else:
-		draw_circle(Vector2(0.0, 1.0), 15.0, Color("#2d77ab"))
-		draw_circle(Vector2.ZERO, 9.0, Color("#e8fdff"))
-		draw_string(ThemeDB.fallback_font, Vector2(-7.0, 6.0), "9", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#173d5b"))
+		draw_circle(Vector2(0.0, body_radius * 0.04), body_radius * 0.65, Color("#2d77ab"))
+		draw_circle(Vector2.ZERO, body_radius * 0.4, Color("#e8fdff"))
+		draw_string(ThemeDB.fallback_font, Vector2(-body_radius * 0.3, body_radius * 0.26), "9", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color("#173d5b"))
 
 	for pip_index in range(level):
-		draw_circle(Vector2((pip_index - (level - 1) * 0.5) * 8.0, -28.0), 2.5, Color("#fff08a"))
-	_draw_health_bar(-39.0)
+		draw_circle(Vector2((pip_index - (level - 1) * 0.5) * 3.0, -body_radius - 2.0), 1.2, Color("#fff08a"))
+	_draw_health_bar(-body_radius - 3.0, body_radius * 1.9)

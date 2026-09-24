@@ -30,7 +30,7 @@ MainMenu (menu.tscn / main_menu.gd)     开始菜单，change_scene_to_file 进�
 
 FogLakeLevel (main.tscn / game.gd)
 ├── World (Node2D 世界容器)
-│   ├── MapView             20×15 格、30px、四条弯曲样条路径、IQ 结晶、框选矩形
+│   ├── MapView             256×192 PNG → 128×96 逻辑格、2×2 像素块取色、IQ 结晶、框选矩形
 
 │   ├── Towers              CirnoTower 实例
 │   ├── Barracks            FairyBarracks 实例
@@ -83,7 +83,7 @@ HUD 是 CanvasLayer，全部控件由代码构建，包含：
 
 ### LakeMapView
 
-- 20 × 15 像素格、每格 30 像素（整图 600 × 450，单屏适配、无镜头），生成路径格、草地格和可玩矩形。
+- 读取 2×2 图像像素块为逻辑格（推荐 256×192 PNG → 128×96 格），固定缩放适配单屏，无移动镜头；路径、核心和出生点由像素颜色识别。
 - `PATHS`：四条沿 Catmull-Rom 样条蜿蜒的弯曲路径，全部汇向 `CORE_CELL(10, 7)`；路宽约 1-2 格，路线深色、空地无色。
 - 提供 `world_to_cell`、`is_buildable`（路线 / 核心 / 入口不可建）、`has_entrance`、`get_path_points(entrance_id)`、`get_core_world_position`。
 - 提供 `get_closest_path_world_position`，跨所有路径供兵营确定单位出生点。
@@ -97,14 +97,14 @@ HUD 是 CanvasLayer，全部控件由代码构建，包含：
 
 ### CirnoTower
 
-- 占地为 5 行 13531 菱形（需求 6）；按射程寻找优先目标或最近妖精。
+- 占地为 3×3 格（共 9 格）；按射程寻找优先目标或最近妖精。
 - 创建投射物并应用伤害、溅射、减速修正。
 - 根据等级和全局 modifier 重算伤害、射程与攻击间隔。
 - 支持被框选 / 点选后右键指定优先攻击目标（需求 10）。
 
 ### FairyBarracks
 
-- 占地 3×3（需求 6），只在交战阶段工作。
+- 占地 2×2 格（共 4 格），只在交战阶段工作。
 - 维护存活己方兵种并限制召唤上限。
 - 通过 `FogLakeLevel.spawn_ally` 创建单位；波末结算后存活单位回到出生点附近 7×7 格内驻扎（需求 5）。
 

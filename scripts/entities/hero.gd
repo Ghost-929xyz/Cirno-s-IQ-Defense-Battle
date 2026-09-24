@@ -4,13 +4,14 @@ extends Node2D
 signal defeated(hero: CirnoHero)
 
 const ProjectileScript = preload("res://scripts/entities/projectile.gd")
+const Metrics = preload("res://scripts/game/game_metrics.gd")
 
 ## 需求 7：英雄数值整体下调（190 血 / 普攻 14 / 新星 22 / 冻结 12 / 被动 6）。
 const BASE_MAX_HP := 190.0
 
 var arena_rect := Rect2()
 var move_target := Vector2.INF
-var attack_range := 145.0
+var attack_range := Metrics.combat_range(145.0)
 var attack_interval := 0.68
 var attack_damage := 14.0
 var move_speed := 150.0
@@ -130,7 +131,7 @@ func trigger_baka_passive() -> void:
 		var enemy := enemy_node as FairyEnemy
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		if global_position.distance_to(enemy.global_position) <= 135.0:
+		if global_position.distance_to(enemy.global_position) <= Metrics.combat_range(135.0):
 			enemy.take_damage(6.0 * _damage_multiplier)
 			if is_instance_valid(enemy):
 				enemy.apply_slow(0.58, 2.8)
@@ -222,7 +223,7 @@ func _cast_frost_nova() -> void:
 		var enemy := enemy_node as FairyEnemy
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		if global_position.distance_to(enemy.global_position) <= 145.0:
+		if global_position.distance_to(enemy.global_position) <= Metrics.combat_range(145.0):
 			enemy.take_damage(22.0 * _damage_multiplier)
 			if is_instance_valid(enemy):
 				enemy.apply_slow(0.48, 3.0)
@@ -237,7 +238,7 @@ func _cast_absolute_freeze() -> void:
 		if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
 		var distance := global_position.distance_to(enemy.global_position)
-		if distance <= 250.0 and distance < nearest_distance:
+		if distance <= Metrics.combat_range(250.0) and distance < nearest_distance:
 			target = enemy
 			nearest_distance = distance
 	if target == null:
@@ -249,46 +250,43 @@ func _cast_absolute_freeze() -> void:
 
 
 func _draw() -> void:
-	var bob := sin(_bob_time * 5.2) * 2.2
+	var body_radius := maxf(4.2, Metrics.cells(0.95))
+	var bob := sin(_bob_time * 5.2) * 0.6
 	# 需求 9：脚底方向箭头（不再绘制移动轨迹线）
 	if not _dead and move_target.is_finite():
 		var move_offset := move_target - global_position
-		if move_offset.length() > 6.0:
+		if move_offset.length() > 2.0:
 			var direction := move_offset.normalized()
-			var arrow_base := Vector2(0.0, 31.0 + bob)
-			var tip := arrow_base + direction * 16.0
-			var back_left := arrow_base + direction.rotated(2.55) * 9.0
-			var back_right := arrow_base + direction.rotated(-2.55) * 9.0
+			var arrow_base := Vector2(0.0, body_radius * 1.55 + bob)
+			var tip := arrow_base + direction * maxf(7.0, body_radius * 1.8)
+			var back_left := arrow_base + direction.rotated(2.55) * maxf(4.0, body_radius)
+			var back_right := arrow_base + direction.rotated(-2.55) * maxf(4.0, body_radius)
 			draw_colored_polygon(PackedVector2Array([tip, back_left, back_right]), Color(0.10, 0.88, 1.0, 0.88))
-			draw_polyline(PackedVector2Array([tip, back_left, back_right, tip]), Color("#dffcff"), 1.6, true)
+			draw_polyline(PackedVector2Array([tip, back_left, back_right, tip]), Color("#dffcff"), 1.0, true)
 
 	if _selected:
-		draw_arc(Vector2.ZERO, 24.0, 0.0, TAU, 40, Color(0.45, 0.96, 1.0, 0.85), 2.2)
-		draw_circle(Vector2.ZERO, 26.0, Color(0.45, 0.96, 1.0, 0.08))
+		var selection_radius := maxf(7.0, body_radius * 1.65)
+		draw_arc(Vector2.ZERO, selection_radius, 0.0, TAU, 40, Color(0.45, 0.96, 1.0, 0.85), 1.6)
+		draw_circle(Vector2.ZERO, selection_radius, Color(0.45, 0.96, 1.0, 0.08))
 
-	draw_circle(Vector2(0.0, 13.0 + bob), 17.0, Color(0.01, 0.04, 0.09, 0.35))
+	draw_circle(Vector2(0.0, body_radius * 1.2 + bob), body_radius * 0.95, Color(0.01, 0.04, 0.09, 0.35))
 	for angle_index in range(6):
 		var angle := TAU * float(angle_index) / 6.0
-		draw_line(Vector2(0.0, bob), Vector2.from_angle(angle) * 25.0, Color(0.73, 0.96, 1.0, 0.7), 4.0)
-	draw_circle(Vector2(0.0, bob), 18.0, Color("#f4ffff"))
+		draw_line(Vector2(0.0, bob), Vector2.from_angle(angle) * (body_radius * 1.55), Color(0.73, 0.96, 1.0, 0.7), 1.2)
+	draw_circle(Vector2(0.0, bob), body_radius * 1.18, Color("#f4ffff"))
 	var body_color := Color("#69c9f1")
 	if _dead:
 		body_color = Color("#5a6b7d")
 	elif _flash_remaining > 0.0:
 		body_color = body_color.lerp(Color.WHITE, 0.8)
-	draw_circle(Vector2(0.0, bob + 2.0), 15.0, body_color)
-	draw_circle(Vector2(-6.0, -6.0 + bob), 3.0, Color("#173752"))
-	draw_circle(Vector2(6.0, -6.0 + bob), 3.0, Color("#173752"))
+	draw_circle(Vector2(0.0, bob + body_radius * 0.12), body_radius, body_color)
+	draw_circle(Vector2(-body_radius * 0.38, -body_radius * 0.38 + bob), maxf(0.8, body_radius * 0.2), Color("#173752"))
+	draw_circle(Vector2(body_radius * 0.38, -body_radius * 0.38 + bob), maxf(0.8, body_radius * 0.2), Color("#173752"))
 	if _dead:
-		draw_line(Vector2(-7.0, -2.0 + bob), Vector2(7.0, -2.0 + bob), Color("#173752"), 2.5)
+		draw_line(Vector2(-body_radius * 0.45, -body_radius * 0.1 + bob), Vector2(body_radius * 0.45, -body_radius * 0.1 + bob), Color("#173752"), 1.5)
 	else:
-		draw_arc(Vector2(0.0, bob + 5.0), 7.0, 0.2, PI - 0.2, 12, Color("#173752"), 2.0)
-	draw_string(ThemeDB.fallback_font, Vector2(-7.0, 8.0 + bob), "⑨", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#f7ffff"))
-	draw_string(ThemeDB.fallback_font, Vector2(-30.0, 37.0), "琪露诺", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#e8fcff"))
+		draw_arc(Vector2(0.0, body_radius * 0.34 + bob), body_radius * 0.45, 0.2, PI - 0.2, 12, Color("#173752"), 1.2)
+	draw_string(ThemeDB.fallback_font, Vector2(-body_radius * 0.42, body_radius * 0.52 + bob), "⑨", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color("#f7ffff"))
+	draw_string(ThemeDB.fallback_font, Vector2(-body_radius * 2.0, body_radius * 2.5), "琪露诺", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color("#e8fcff"))
 
-	var bar_width := 58.0
-	var bar_position := Vector2(-bar_width * 0.5, -40.0)
-	var ratio := clampf(current_hp / maxf(1.0, max_hp), 0.0, 1.0)
-	draw_rect(Rect2(bar_position, Vector2(bar_width, 7.0)), Color(0.03, 0.06, 0.09, 0.92))
-	var bar_color := Color("#ff6b82") if ratio <= 0.35 else Color("#7ef0a4")
-	draw_rect(Rect2(bar_position + Vector2(1.0, 1.0), Vector2((bar_width - 2.0) * ratio, 5.0)), bar_color)
+	# 英雄血条只显示在顶部 HUD，世界内不再绘制，避免遮挡战场。

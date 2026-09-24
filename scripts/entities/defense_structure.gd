@@ -1,6 +1,8 @@
 class_name DefenseStructure
 extends Node2D
 
+const Metrics = preload("res://scripts/game/game_metrics.gd")
+
 signal destroyed(structure: DefenseStructure)
 
 var definition: Dictionary = {}
@@ -120,13 +122,13 @@ func _destroy_structure() -> void:
 	queue_free()
 
 
-func _draw_health_bar(extra_y: float = -40.0) -> void:
+func _draw_health_bar(extra_y: float = -10.0, width: float = 10.0) -> void:
 	if current_hp >= max_hp and not selected and not hovered:
 		return
-	var width := 48.0
+	var bar_height := maxf(2.0, Metrics.cells(0.55))
 	var bar_position := Vector2(-width * 0.5, extra_y)
-	draw_rect(Rect2(bar_position, Vector2(width, 6.0)), Color(0.02, 0.05, 0.09, 0.92))
+	draw_rect(Rect2(bar_position, Vector2(width, bar_height)), Color(0.02, 0.05, 0.09, 0.92))
 	var color := Color("#75e7a5")
 	if get_health_ratio() < 0.35:
 		color = Color("#ff6d82")
-	draw_rect(Rect2(bar_position + Vector2(1.0, 1.0), Vector2((width - 2.0) * get_health_ratio(), 4.0)), color)
+	draw_rect(Rect2(bar_position + Vector2(0.5, 0.5), Vector2((width - 1.0) * get_health_ratio(), bar_height - 1.0)), color)
