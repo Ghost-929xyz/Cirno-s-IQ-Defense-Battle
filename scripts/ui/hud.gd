@@ -24,8 +24,12 @@ const MINIMAP_SIZE := Vector2(176.0, 132.0)
 var _hp_label: Label
 var _hp_bar: ProgressBar
 var _resource_label: Label
+var _crystal_label: Label
+var _wave_badge: Panel
 var _wave_label: Label
 var _status_label: Label
+var _skill_overlays: Dictionary = {}
+var _modifier_panel: Panel
 
 var _dock: Panel
 var _dock_content: Control
@@ -49,6 +53,7 @@ var _modifier_pool := ""
 
 var _settlement_overlay: Control
 var _settlement_title: Label
+var _settlement_reward_label: Label
 var _settlement_body: Label
 
 var _result_overlay: Control
@@ -96,19 +101,29 @@ func _build_top_bar() -> void:
 	bar.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color(0.02, 0.09, 0.16, 0.94), Color("#3d8caf")))
 	add_child(bar)
 
-	# 琪露诺像素头像（精灵表 idle 第 0 帧）。
+	# 琪露诺头像（idle 第 0 帧）+ 冰晶圆环。
 	var portrait_texture := CirnoSprite.frame_texture("idle", 0)
 	if portrait_texture != null:
 		var portrait := TextureRect.new()
 		portrait.texture = portrait_texture
-		portrait.position = Vector2(14.0, 6.0)
+		portrait.position = Vector2(12.0, 6.0)
 		portrait.size = Vector2(56.0, 56.0)
 		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		bar.add_child(portrait)
+	var ring_texture: Texture2D = PixelUITheme.icon("portrait_ring.png")
+	if ring_texture != null:
+		var ring := TextureRect.new()
+		ring.texture = ring_texture
+		ring.position = Vector2(6.0, 0.0)
+		ring.size = Vector2(68.0, 68.0)
+		ring.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ring.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.add_child(ring)
 
-	var title := _make_label(bar, "琪露诺的智商保卫战", Vector2(76.0, 6.0), Vector2(120.0, 44.0), 13, Color("#ebfdff"))
+	var title := _make_label(bar, "琪露诺的智商保卫战", Vector2(80.0, 6.0), Vector2(112.0, 44.0), 13, Color("#ebfdff"))
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_hp_label = _make_label(bar, "琪露诺生命 240 / 240", Vector2(198.0, 6.0), Vector2(212.0, 22.0), 15, Color("#9ff4ff"))
@@ -123,8 +138,36 @@ func _build_top_bar() -> void:
 	_hp_bar.add_theme_stylebox_override("fill", PixelUITheme.bar_fill(1.0))
 	bar.add_child(_hp_bar)
 
-	_resource_label = _make_label(bar, "冻气 180    冰晶 0", Vector2(426.0, 6.0), Vector2(220.0, 22.0), 15, Color("#ddf8ff"))
-	_wave_label = _make_label(bar, "准备 · 第 0 / 10 波 · 在场 0", Vector2(426.0, 34.0), Vector2(300.0, 22.0), 13, Color("#b5d7e5"))
+	# 资源区：冻气/冰晶小图标 + 数字。
+	var frost_icon: Texture2D = PixelUITheme.icon("icon_frost.png")
+	if frost_icon != null:
+		var frost_rect := TextureRect.new()
+		frost_rect.texture = frost_icon
+		frost_rect.position = Vector2(428.0, 9.0)
+		frost_rect.size = Vector2(16.0, 16.0)
+		frost_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		frost_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		bar.add_child(frost_rect)
+	_resource_label = _make_label(bar, "180", Vector2(448.0, 6.0), Vector2(70.0, 22.0), 15, Color("#ddf8ff"))
+	var crystal_icon: Texture2D = PixelUITheme.icon("icon_crystal.png")
+	if crystal_icon != null:
+		var crystal_rect := TextureRect.new()
+		crystal_rect.texture = crystal_icon
+		crystal_rect.position = Vector2(524.0, 9.0)
+		crystal_rect.size = Vector2(16.0, 16.0)
+		crystal_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		crystal_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		bar.add_child(crystal_rect)
+	_crystal_label = _make_label(bar, "0", Vector2(544.0, 6.0), Vector2(60.0, 22.0), 15, Color("#e2d6ff"))
+
+	# 波次徽章：圆角徽章底 + 文字。
+	_wave_badge = Panel.new()
+	_wave_badge.position = Vector2(426.0, 32.0)
+	_wave_badge.size = Vector2(220.0, 24.0)
+	_wave_badge.add_theme_stylebox_override("panel", PixelUITheme.card_style(Color(0.05, 0.16, 0.26, 0.9), Color("#3d8caf")))
+	bar.add_child(_wave_badge)
+	_wave_label = _make_label(_wave_badge, "准备 · 第 0 / 10 波 · 在场 0", Vector2(8.0, 1.0), Vector2(206.0, 22.0), 12, Color("#b5d7e5"))
+
 	_status_label = _make_label(bar, "", Vector2(734.0, 6.0), Vector2(434.0, 60.0), 12, Color("#8fb4c8"))
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -154,43 +197,80 @@ func _build_dock() -> void:
 
 	_make_label(_dock_content, "建造 · 数字键 1-6", Vector2(14.0, 6.0), Vector2(176.0, 20.0), 13, Color("#e7fbff"))
 
+	# 建造卡片：图标 + 名称 + 价格 + 快捷键角标；金钱不足时整卡置灰。
 	var group := ButtonGroup.new()
 	var button_index := 0
 	for build_id in BuildCatalog.ORDER:
 		var definition := BuildCatalog.get_definition(build_id)
 		var button := Button.new()
-		button.position = Vector2(14.0 + button_index * 175.0, 30.0)
-		button.size = Vector2(168.0, 52.0)
+		button.position = Vector2(14.0 + button_index * 175.0, 28.0)
+		button.size = Vector2(168.0, 56.0)
 		button.toggle_mode = true
 		button.button_group = group
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.text = "%d  %s\n%d冻气 · %s" % [
-			button_index + 1,
-			str(definition.get("name", build_id)),
-			int(definition.get("cost", 0)),
-			str(definition.get("role", "")),
-		]
-		button.add_theme_font_size_override("font_size", 11)
+		button.clip_contents = true
+		button.text = ""
 		PixelUITheme.apply_button_theme(button)
 		button.pressed.connect(_on_build_button_pressed.bind(str(build_id)))
 		_dock_content.add_child(button)
+
+		var icon_texture: Texture2D = PixelUITheme.icon("icon_%s.png" % build_id)
+		if icon_texture != null:
+			var icon_rect := TextureRect.new()
+			icon_rect.texture = icon_texture
+			icon_rect.position = Vector2(6.0, 12.0)
+			icon_rect.size = Vector2(32.0, 32.0)
+			icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			button.add_child(icon_rect)
+
+		var name_label := _make_label(button, str(definition.get("name", build_id)), Vector2(44.0, 5.0), Vector2(118.0, 20.0), 12, Color("#e7fbff"))
+		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		var cost_row := HBoxContainer.new()
+		cost_row.position = Vector2(44.0, 28.0)
+		cost_row.size = Vector2(118.0, 22.0)
+		cost_row.add_theme_constant_override("separation", 3)
+		cost_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(cost_row)
+		var frost_tex: Texture2D = PixelUITheme.icon("icon_frost.png")
+		if frost_tex != null:
+			var cost_icon := TextureRect.new()
+			cost_icon.texture = frost_tex
+			cost_icon.custom_minimum_size = Vector2(13.0, 13.0)
+			cost_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			cost_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			cost_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cost_row.add_child(cost_icon)
+		var cost_label := Label.new()
+		cost_label.text = "%d · %s" % [int(definition.get("cost", 0)), str(definition.get("role", ""))]
+		cost_label.add_theme_font_size_override("font_size", 11)
+		cost_label.add_theme_color_override("font_color", Color("#9fd4e8"))
+		cost_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cost_row.add_child(cost_label)
+
+		# 快捷键角标
+		var hotkey := Panel.new()
+		hotkey.position = Vector2(146.0, 4.0)
+		hotkey.size = Vector2(18.0, 18.0)
+		hotkey.add_theme_stylebox_override("panel", PixelUITheme.card_style(Color(0.02, 0.08, 0.15, 0.95), Color("#60bee0")))
+		hotkey.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(hotkey)
+		var hotkey_label := _make_label(hotkey, str(button_index + 1), Vector2.ZERO, Vector2(18.0, 18.0), 11, Color("#c9f2ff"))
+		hotkey_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hotkey_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		hotkey_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 		_build_buttons[str(build_id)] = button
 		button_index += 1
+	_refresh_build_affordability()
 
 	_make_label(_dock_content, "技能", Vector2(14.0, 96.0), Vector2(60.0, 22.0), 13, Color("#e7fbff"))
 
-	var nova_button := _make_action_button("Q 冰霜新星", Color("#246f99"))
-	nova_button.position = Vector2(80.0, 92.0)
-	nova_button.size = Vector2(168.0, 30.0)
-	nova_button.pressed.connect(func() -> void: hero_skill_requested.emit("nova"))
-	_dock_content.add_child(nova_button)
+	# 技能按钮：图标 + 冷却扫过遮罩（TextureProgressBar 径向）。
+	var nova_button := _make_skill_button("nova", "Q 冰霜新星", "icon_nova.png", Vector2(80.0, 90.0))
 	_skill_buttons["nova"] = nova_button
-
-	var freeze_button := _make_action_button("R 完美冻结", Color("#6255a8"))
-	freeze_button.position = Vector2(258.0, 92.0)
-	freeze_button.size = Vector2(168.0, 30.0)
-	freeze_button.pressed.connect(func() -> void: hero_skill_requested.emit("freeze"))
-	_dock_content.add_child(freeze_button)
+	var freeze_button := _make_skill_button("freeze", "R 完美冻结", "icon_freeze.png", Vector2(258.0, 90.0))
 	_skill_buttons["freeze"] = freeze_button
 
 	_start_button = _make_action_button("开始第 1 波", Color("#2f8b70"))
@@ -255,12 +335,14 @@ func _build_modifier_overlay() -> void:
 	panel.size = Vector2(650.0, 506.0)
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_modifier_overlay.add_child(panel)
+	_modifier_panel = panel
 
 	_modifier_title = _make_label(panel, "笨蛋灵感", Vector2(28.0, 16.0), Vector2(594.0, 36.0), 28, Color("#edfdff"))
 	_modifier_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_modifier_subtitle = _make_label(panel, "选择一项强化，然后继续。", Vector2(34.0, 56.0), Vector2(582.0, 28.0), 14, Color("#9ac4d7"))
 	_modifier_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
+	# 三选卡面：稀有度徽章 + 名称 + 描述（稀有度决定卡框配色）。
 	for index in range(3):
 		var button := Button.new()
 		button.position = Vector2(30.0 + index * 200.0, 96.0)
@@ -268,11 +350,20 @@ func _build_modifier_overlay() -> void:
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size", 15)
-		button.add_theme_stylebox_override("normal", PixelUITheme.card_style())
-		button.add_theme_stylebox_override("hover", PixelUITheme.card_style(Color("#174d67"), Color("#c7f8ff")))
-		button.add_theme_stylebox_override("pressed", PixelUITheme.card_style(Color("#0c2438"), Color("#c7f8ff")))
+		button.clip_contents = true
 		button.pressed.connect(_on_modifier_card_pressed.bind(index))
 		panel.add_child(button)
+
+		# 稀有度徽章（顶部横条，配色随稀有度）。
+		var badge := Label.new()
+		badge.name = "RarityBadge"
+		badge.position = Vector2(10.0, 8.0)
+		badge.size = Vector2(166.0, 22.0)
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		badge.add_theme_font_size_override("font_size", 12)
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(badge)
+
 		_modifier_buttons.append(button)
 
 
@@ -295,10 +386,31 @@ func _build_settlement_overlay() -> void:
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_settlement_overlay.add_child(panel)
 
-	_settlement_title = _make_label(panel, "第 1 波 结算", Vector2(30.0, 20.0), Vector2(390.0, 36.0), 24, Color("#edfdff"))
+	_settlement_title = _make_label(panel, "第 1 波 结算", Vector2(30.0, 16.0), Vector2(390.0, 36.0), 24, Color("#edfdff"))
 	_settlement_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	_settlement_body = _make_label(panel, "", Vector2(36.0, 68.0), Vector2(378.0, 86.0), 14, Color("#b6d9e8"))
+	# 战报条目行：冻气收益（图标 + 文字）。
+	var row := HBoxContainer.new()
+	row.position = Vector2(70.0, 64.0)
+	row.size = Vector2(310.0, 26.0)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
+	var frost_tex: Texture2D = PixelUITheme.icon("icon_frost.png")
+	if frost_tex != null:
+		var row_icon := TextureRect.new()
+		row_icon.texture = frost_tex
+		row_icon.custom_minimum_size = Vector2(20.0, 20.0)
+		row_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		row_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(row_icon)
+	_settlement_reward_label = Label.new()
+	_settlement_reward_label.text = "波次收益  +0 冻气"
+	_settlement_reward_label.add_theme_font_size_override("font_size", 17)
+	_settlement_reward_label.add_theme_color_override("font_color", Color("#c9f2ff"))
+	row.add_child(_settlement_reward_label)
+
+	_settlement_body = _make_label(panel, "", Vector2(36.0, 98.0), Vector2(378.0, 56.0), 13, Color("#8fb4c8"))
 	_settlement_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_settlement_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_settlement_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -329,8 +441,18 @@ func _build_result_overlay() -> void:
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0b223b"), Color("#8cecff")))
 	_result_overlay.add_child(panel)
 
-	_result_title = _make_label(panel, "IQ 保卫成功！", Vector2(30.0, 34.0), Vector2(420.0, 48.0), 32, Color("#c9fff0"))
+	_result_title = _make_label(panel, "IQ 保卫成功！", Vector2(30.0, 30.0), Vector2(420.0, 48.0), 32, Color("#c9fff0"))
 	_result_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 标题下冰晶装饰线。
+	var banner_tex: Texture2D = PixelUITheme.icon("title_banner.png")
+	if banner_tex != null:
+		var banner := TextureRect.new()
+		banner.texture = banner_tex
+		banner.position = Vector2(60.0, 84.0)
+		banner.size = Vector2(360.0, 16.0)
+		banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		panel.add_child(banner)
 	_result_description = _make_label(panel, "你守住了琪露诺的 IQ。", Vector2(45.0, 104.0), Vector2(390.0, 100.0), 17, Color("#b6d9e8"))
 	_result_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_result_description.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -365,9 +487,11 @@ func update_resources(hero_hp: int, hero_max_hp: int, frost: int, ice_crystals: 
 	if _hp_bar_fill_tier != fill_tier:
 		_hp_bar_fill_tier = fill_tier
 		_hp_bar.add_theme_stylebox_override("fill", PixelUITheme.bar_fill(ratio))
-	_resource_label.text = "冻气  %d    冰晶  %d" % [frost, ice_crystals]
+	_resource_label.text = str(frost)
+	_crystal_label.text = str(ice_crystals)
 	_wave_label.text = wave_text
 	_status_label.text = status_text
+	_refresh_build_affordability()
 	_update_upgrade_button()
 
 
@@ -414,6 +538,13 @@ func clear_structure_detail() -> void:
 	_upgrade_button.visible = false
 
 
+const RARITY_COLORS := {
+	"普通": Color("#8fd8f0"),
+	"稀有": Color("#c494ff"),
+	"冰晶附魔": Color("#ffd66e"),
+}
+
+
 func show_modifier_choices(pool: String, title: String, subtitle: String, choices: Array[Dictionary]) -> void:
 	_modifier_pool = pool
 	_modifier_choices = choices
@@ -425,13 +556,41 @@ func show_modifier_choices(pool: String, title: String, subtitle: String, choice
 			button.visible = false
 			continue
 		var definition := choices[index]
+		var rarity := str(definition.get("rarity", "普通"))
 		button.visible = true
-		button.text = "%s\n\n%s\n\n%s" % [
-			str(definition.get("rarity", "强化")),
+		button.text = "\n%s\n\n%s" % [
 			str(definition.get("name", "未命名")),
 			str(definition.get("description", "")),
 		]
+		# 稀有度卡框 + 徽章配色。
+		button.add_theme_stylebox_override("normal", PixelUITheme.card_rarity_style(rarity))
+		button.add_theme_stylebox_override("hover", PixelUITheme.card_rarity_hover_style(rarity))
+		button.add_theme_stylebox_override("pressed", PixelUITheme.card_rarity_style(rarity))
+		var badge := button.get_node_or_null("RarityBadge") as Label
+		if badge != null:
+			badge.text = rarity
+			badge.add_theme_color_override("font_color", RARITY_COLORS.get(rarity, Color("#8fd8f0")))
 	_modifier_overlay.visible = true
+	_play_modifier_entrance()
+
+
+## 卡片依次飞入：从下方浮起并淡入。
+func _play_modifier_entrance() -> void:
+	if _modifier_panel != null:
+		_modifier_panel.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var panel_tween := create_tween()
+		panel_tween.tween_property(_modifier_panel, "modulate:a", 1.0, 0.18)
+	for index in range(_modifier_buttons.size()):
+		var button := _modifier_buttons[index]
+		if not button.visible:
+			continue
+		var final_y := button.position.y
+		button.position.y = final_y + 46.0
+		button.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var tween := create_tween()
+		tween.set_parallel(true)
+		tween.tween_property(button, "position:y", final_y, 0.26).set_delay(0.08 * index).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(button, "modulate:a", 1.0, 0.22).set_delay(0.08 * index)
 
 
 func hide_modifier_choices() -> void:
@@ -442,7 +601,8 @@ func hide_modifier_choices() -> void:
 ## 需求 5：显示波末结算弹窗。
 func show_settlement(wave_number: int, projected_reward: int) -> void:
 	_settlement_title.text = "第 %d 波 结算" % wave_number
-	_settlement_body.text = "选择祝福后获得：至少 +%d 冻气\n奖励随波次提高；奖励类祝福会立即计入本次结算。\n当前波次兵种已返回兵营附近驻扎。" % projected_reward
+	_settlement_reward_label.text = "波次收益  至少 +%d 冻气" % projected_reward
+	_settlement_body.text = "奖励随波次提高；奖励类祝福会立即计入本次结算。\n当前波次兵种已返回兵营附近驻扎。"
 	_settlement_overlay.visible = true
 
 
@@ -450,12 +610,16 @@ func hide_settlement() -> void:
 	_settlement_overlay.visible = false
 
 
-func set_skill_state(slot: String, text: String, ready: bool) -> void:
+func set_skill_state(slot: String, text: String, ready: bool, cooldown_ratio := 0.0) -> void:
 	if not _skill_buttons.has(slot):
 		return
 	var button: Button = _skill_buttons[slot]
-	button.text = text
+	button.text = "   " + text
 	button.disabled = not ready
+	if _skill_overlays.has(slot):
+		var sweep: TextureProgressBar = _skill_overlays[slot]
+		sweep.value = clampf(cooldown_ratio, 0.0, 1.0)
+		sweep.visible = cooldown_ratio > 0.001
 
 
 func show_result(victory: bool, description: String) -> void:
@@ -491,6 +655,57 @@ func _update_upgrade_button() -> void:
 	var cost := _selected_structure.get_upgrade_cost()
 	_upgrade_button.text = "升级至 Lv.%d  [%d 冻气]" % [_selected_structure.level + 1, cost]
 	_upgrade_button.disabled = _frost < cost
+
+
+## 技能按钮：图标 + 文本 + 径向冷却遮罩。
+func _make_skill_button(slot: String, text: String, icon_file: String, pos: Vector2) -> Button:
+	var button := _make_action_button(text, Color("#246f99"))
+	button.position = pos
+	button.size = Vector2(168.0, 34.0)
+	button.clip_contents = true
+	button.pressed.connect(func() -> void: hero_skill_requested.emit(slot))
+	_dock_content.add_child(button)
+
+	var icon_texture: Texture2D = PixelUITheme.icon(icon_file)
+	if icon_texture != null:
+		var icon_rect := TextureRect.new()
+		icon_rect.texture = icon_texture
+		icon_rect.position = Vector2(6.0, 3.0)
+		icon_rect.size = Vector2(28.0, 28.0)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(icon_rect)
+	button.text = "   " + text
+
+	# 径向冷却扫过遮罩。
+	var sweep := TextureProgressBar.new()
+	sweep.fill_mode = TextureProgressBar.FILL_CLOCKWISE
+	sweep.nine_patch_stretch = true
+	sweep.position = Vector2.ZERO
+	sweep.size = button.size
+	sweep.min_value = 0.0
+	sweep.max_value = 1.0
+	sweep.value = 0.0
+	sweep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sweep.modulate = Color(0.02, 0.06, 0.12, 0.72)
+	var sweep_image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	sweep_image.fill(Color.WHITE)
+	sweep.texture_progress = ImageTexture.create_from_image(sweep_image)
+	sweep.texture_under = null
+	sweep.visible = false
+	button.add_child(sweep)
+	_skill_overlays[slot] = sweep
+	return button
+
+
+## 金钱不足的建造卡片整卡置灰（仍可点击查看说明）。
+func _refresh_build_affordability() -> void:
+	for build_id in _build_buttons:
+		var button: Button = _build_buttons[build_id]
+		var definition := BuildCatalog.get_definition(build_id)
+		var affordable := _frost >= int(definition.get("cost", 0))
+		button.modulate = Color(1.0, 1.0, 1.0, 1.0) if affordable else Color(0.45, 0.5, 0.55, 0.85)
 
 
 func _make_action_button(text: String, color: Color) -> Button:

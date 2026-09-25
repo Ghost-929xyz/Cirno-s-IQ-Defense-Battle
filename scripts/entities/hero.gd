@@ -159,6 +159,13 @@ func get_skill_ready(slot: String) -> bool:
 	return _freeze_cooldown <= 0.0
 
 
+## 冷却进度比例（1.0 = 刚施放，0.0 = 已就绪），供 HUD 绘制冷却扫过。
+func get_skill_cooldown_ratio(slot: String) -> float:
+	if slot == "nova":
+		return clampf(_nova_cooldown / maxf(0.01, frost_nova_cooldown), 0.0, 1.0)
+	return clampf(_freeze_cooldown / maxf(0.01, absolute_freeze_cooldown), 0.0, 1.0)
+
+
 func _process(delta: float) -> void:
 	if _dead:
 		return

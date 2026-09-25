@@ -891,8 +891,8 @@ func _refresh_hud() -> void:
 	hud.update_resources(get_hero_hp(), get_hero_max_hp(), int(frost), ice_crystals, wave_text, _status_text)
 	hud.set_start_button(phase == Phase.PREP, "开始第 %d 波" % mini(WaveCatalog.wave_count(), wave_index + 2))
 	if is_instance_valid(_hero):
-		hud.set_skill_state("nova", _hero.get_skill_text("nova"), _hero.get_skill_ready("nova") and phase != Phase.FINISHED)
-		hud.set_skill_state("freeze", _hero.get_skill_text("freeze"), _hero.get_skill_ready("freeze") and phase != Phase.FINISHED)
+		hud.set_skill_state("nova", _hero.get_skill_text("nova"), _hero.get_skill_ready("nova") and phase != Phase.FINISHED, _hero.get_skill_cooldown_ratio("nova"))
+		hud.set_skill_state("freeze", _hero.get_skill_text("freeze"), _hero.get_skill_ready("freeze") and phase != Phase.FINISHED, _hero.get_skill_cooldown_ratio("freeze"))
 	if _selected_structure != null and is_instance_valid(_selected_structure):
 		hud.refresh_structure_detail(_selected_structure, int(frost))
 

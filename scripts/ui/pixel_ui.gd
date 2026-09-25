@@ -80,6 +80,41 @@ static func button_pressed(fallback_bg := Color("#1b5a78"), fallback_border := C
 	return _style_from("button_pressed.png", BUTTON_MARGIN, fallback_bg, fallback_border)
 
 
+static func button_disabled(fallback_bg := Color("#1a222c"), fallback_border := Color("#46545f")) -> StyleBox:
+	return _style_from("button_disabled.png", BUTTON_MARGIN, fallback_bg, fallback_border)
+
+
+## 稀有度卡框：普通 / 稀有 / 冰晶附魔。
+static func card_rarity_style(rarity: String) -> StyleBox:
+	match rarity:
+		"稀有":
+			return _style_from("card_rare.png", CARD_MARGIN, Color("#241a3e"), Color("#c494ff"), Vector4(10.0, 10.0, 10.0, 10.0))
+		"冰晶附魔":
+			return _style_from("card_enchant.png", CARD_MARGIN, Color("#2e2410"), Color("#ffd66e"), Vector4(10.0, 10.0, 10.0, 10.0))
+		_:
+			return _style_from("card_common.png", CARD_MARGIN, Color("#102f4c"), Color("#60bee0"), Vector4(10.0, 10.0, 10.0, 10.0))
+
+
+static func card_rarity_hover_style(rarity: String) -> StyleBox:
+	match rarity:
+		"稀有":
+			return _style_from("card_rare.png", CARD_MARGIN, Color("#332258"), Color("#e6d2ff"), Vector4(10.0, 10.0, 10.0, 10.0))
+		"冰晶附魔":
+			return _style_from("card_enchant.png", CARD_MARGIN, Color("#403218"), Color("#fff0be"), Vector4(10.0, 10.0, 10.0, 10.0))
+		_:
+			return _style_from("card_common.png", CARD_MARGIN, Color("#174d67"), Color("#c7f8ff"), Vector4(10.0, 10.0, 10.0, 10.0))
+
+
+## 小图标贴图（建筑/技能/资源）。
+static func icon(file_name: String) -> Texture2D:
+	return _load_texture(file_name)
+
+
+## 小地图边框。
+static func minimap_frame_style() -> StyleBox:
+	return _style_from("minimap_frame.png", 6.0, Color(0.03, 0.12, 0.21, 0.0), Color("#60bee0"), Vector4(4.0, 4.0, 4.0, 4.0))
+
+
 static func bar_back(fallback_bg := Color("#0a1c2c"), fallback_border := Color("#2c6c8e")) -> StyleBox:
 	return _style_from("bar_back.png", BAR_MARGIN, fallback_bg, fallback_border, Vector4(4.0, 4.0, 4.0, 4.0))
 
@@ -101,4 +136,4 @@ static func apply_button_theme(button: Button) -> void:
 	button.add_theme_stylebox_override("hover", button_hover())
 	button.add_theme_stylebox_override("pressed", button_pressed())
 	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	button.add_theme_stylebox_override("disabled", button_normal())
+	button.add_theme_stylebox_override("disabled", button_disabled())

@@ -52,34 +52,43 @@ func _seed_snow() -> void:
 
 
 func _build_ui() -> void:
-	var title := _make_label(self, "琪露诺的智商保卫战", Vector2(140.0, 118.0), Vector2(900.0, 64.0), 46, Color("#ebfdff"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 左列：标题 + 冰晶装饰条 + 副标题 + 纵向菜单按钮。
+	var title := _make_label(self, "琪露诺的智商保卫战", Vector2(90.0, 108.0), Vector2(560.0, 60.0), 44, Color("#ebfdff"))
 
-	var subtitle := _make_label(self, "雾之湖 · 塔防 Roguelike 原型", Vector2(140.0, 190.0), Vector2(900.0, 30.0), 18, Color("#8fc7dd"))
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var banner_texture: Texture2D = PixelUITheme.icon("title_banner.png")
+	if banner_texture != null:
+		var banner := TextureRect.new()
+		banner.texture = banner_texture
+		banner.position = Vector2(90.0, 178.0)
+		banner.size = Vector2(560.0, 24.0)
+		banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		add_child(banner)
 
-	# 标题旁的像素琪露诺（idle 帧动画展示）。
+	var subtitle := _make_label(self, "雾之湖 · 塔防 Roguelike 原型", Vector2(90.0, 214.0), Vector2(420.0, 30.0), 18, Color("#8fc7dd"))
+
+	# 右侧：高清琪露诺立绘作为视觉主体（idle 帧动画）。
 	var hero_sprite := CirnoSprite.make_sprite()
 	if hero_sprite != null:
-		hero_sprite.scale = Vector2(0.85, 0.85)
-		hero_sprite.position = Vector2(268.0, 158.0)
+		hero_sprite.scale = Vector2(2.1, 2.1)
+		hero_sprite.position = Vector2(905.0, 330.0)
 		add_child(hero_sprite)
 
 	var start_button := _make_menu_button("开始游戏", Color("#2f8b70"), 20)
-	start_button.position = Vector2(480.0, 350.0)
-	start_button.size = Vector2(220.0, 60.0)
+	start_button.position = Vector2(130.0, 330.0)
+	start_button.size = Vector2(240.0, 60.0)
 	start_button.pressed.connect(start_game)
 	add_child(start_button)
 
 	var help_button := _make_menu_button("操作说明", Color("#246f99"), 15)
-	help_button.position = Vector2(480.0, 424.0)
-	help_button.size = Vector2(220.0, 48.0)
+	help_button.position = Vector2(130.0, 410.0)
+	help_button.size = Vector2(240.0, 50.0)
 	help_button.pressed.connect(_toggle_help)
 	add_child(help_button)
 
 	var quit_button := _make_menu_button("退出游戏", Color("#5a4a7a"), 15)
-	quit_button.position = Vector2(480.0, 484.0)
-	quit_button.size = Vector2(220.0, 48.0)
+	quit_button.position = Vector2(130.0, 476.0)
+	quit_button.size = Vector2(240.0, 50.0)
 	quit_button.pressed.connect(quit_game)
 	add_child(quit_button)
 
