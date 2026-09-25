@@ -111,7 +111,7 @@ func _fire_at(target: Node2D) -> void:
 	projectile.setup(
 		target,
 		float(definition.get("current_damage", 10.0)),
-		float(definition.get("projectile_speed", 400.0)),
+		Metrics.speed(float(definition.get("projectile_speed", 400.0))),
 		Color(str(definition.get("color", "#9feeff"))),
 		float(definition.get("current_splash", 0.0)),
 		float(definition.get("current_slow_factor", 1.0)),

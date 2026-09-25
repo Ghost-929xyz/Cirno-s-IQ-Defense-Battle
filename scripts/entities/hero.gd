@@ -15,7 +15,7 @@ var move_target := Vector2.INF
 var attack_range := Metrics.combat_range(145.0)
 var attack_interval := 0.68
 var attack_damage := 14.0
-var move_speed := 150.0
+var move_speed := Metrics.speed(150.0)
 var frost_nova_cooldown := 8.0
 var absolute_freeze_cooldown := 16.0
 var max_hp := BASE_MAX_HP
@@ -256,7 +256,7 @@ func _fire_at(target: FairyEnemy) -> void:
 	projectile.setup(
 		target,
 		attack_damage * _damage_multiplier,
-		520.0,
+		Metrics.speed(520.0),
 		Color("#bdf7ff"),
 		0.0,
 		0.78,

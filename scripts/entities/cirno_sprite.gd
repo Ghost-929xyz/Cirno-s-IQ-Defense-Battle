@@ -65,7 +65,7 @@ static func make_sprite() -> AnimatedSprite2D:
 	var sprite := AnimatedSprite2D.new()
 	sprite.sprite_frames = frames
 	sprite.animation = "idle"
-	sprite.scale = Vector2(0.62, 0.62)
+	sprite.scale = Vector2(1.0, 1.0)
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.animation_finished.connect(func() -> void:
 		if sprite.animation != "death" and sprite.animation != "idle" and sprite.animation != "walk":

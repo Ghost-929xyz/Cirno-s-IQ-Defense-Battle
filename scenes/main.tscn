@@ -10,7 +10,7 @@ script = ExtResource("1_game")
 [node name="World" type="Node2D" parent="."]
 
 [node name="MapView" type="Node2D" parent="World"]
-position = Vector2(290, 78)
+position = Vector2(0, 0)
 script = ExtResource("2_map")
 
 [node name="Towers" type="Node2D" parent="World"]

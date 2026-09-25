@@ -28,8 +28,6 @@ const TOWER_FOOTPRINT := [
 	Vector2i(-1, 0), Vector2i(0, 0), Vector2i(1, 0),
 	Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1),
 ]
-## 地图固定铺在 600×450 的单屏地图区，不创建/移动镜头。
-const MAP_VIEW_SIZE := Metrics.MAP_SCREEN_SIZE
 
 enum Phase {
 	PREP,
@@ -68,7 +66,7 @@ var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _structure_cells: Dictionary = {}
 var _selected_nodes: Array[Node2D] = []
-var _status_text := "右键移动琪露诺；左键建造或框选。"
+var _status_text := "右键移动琪露诺；左键建造或框选；WASD/中键平移镜头，滚轮缩放。"
 var _enchant_open := false
 var _unclaimed_enchant_drops := 0
 var _pending_wave_finished_index := -1
@@ -78,6 +76,14 @@ var _drag_start_screen := Vector2.ZERO
 var _drag_start_world := Vector2.ZERO
 var _is_dragging := false
 const _DRAG_THRESHOLD := 6.0
+
+## 大地图镜头：WASD/方向键/中键拖拽平移，滚轮缩放，小地图点击跳转。
+const CAMERA_PAN_SPEED := 760.0
+const CAMERA_MAX_ZOOM := 2.5
+const CAMERA_ZOOM_MARGIN := 0.95
+
+var _camera: Camera2D
+var _camera_dragging := false
 
 
 func _ready() -> void:
@@ -98,11 +104,13 @@ func _ready() -> void:
 	hud.menu_requested.connect(_on_menu_requested)
 	hud.settlement_continue_requested.connect(_on_settlement_continue_requested)
 
+	_setup_camera()
 	_setup_tutorial()
 	_spawn_hero()
 	map_view.set_build_validator(can_build_at)
 	map_view.set_build_preview(_selected_build_id)
 	hud.select_build_item(_selected_build_id)
+	hud.setup_minimap(self)
 	_refresh_hud()
 
 
@@ -124,6 +132,7 @@ func _process(delta: float) -> void:
 	if phase == Phase.PREP:
 		if is_instance_valid(_hero):
 			_hero.regen(delta)
+	_update_camera(delta)
 	_refresh_hud()
 
 
@@ -132,6 +141,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseMotion:
+		if _camera_dragging:
+			_camera.position -= event.relative / _camera.zoom.x
+			return
 		if _is_dragging:
 			var end_world := get_global_mouse_position()
 			map_view.set_selection_rect(Rect2(_drag_start_world, Vector2.ZERO).expand(end_world))
@@ -140,6 +152,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+			_zoom_camera(1.12)
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+			_zoom_camera(1.0 / 1.12)
+			return
+		if event.button_index == MOUSE_BUTTON_MIDDLE:
+			_camera_dragging = event.pressed
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				_begin_left_drag()
@@ -164,6 +185,65 @@ func _unhandled_input(event: InputEvent) -> void:
 			var index := int(event.keycode - KEY_1)
 			if index >= 0 and index < BuildCatalog.ORDER.size():
 				_on_build_item_selected(str(BuildCatalog.ORDER[index]))
+
+
+## 创建并居中战斗镜头；限制在棋盘范围内。
+func _setup_camera() -> void:
+	_camera = Camera2D.new()
+	_camera.name = "BattleCamera"
+	add_child(_camera)
+	var board := map_view.BOARD_SIZE
+	_camera.limit_left = 0
+	_camera.limit_top = 0
+	_camera.limit_right = int(board.x)
+	_camera.limit_bottom = int(board.y)
+	_camera.position = map_view.get_hero_spawn_world_position()
+	_camera.make_current()
+
+
+## 小地图点击/拖拽跳转镜头。
+func move_camera_to(world_position: Vector2) -> void:
+	if _camera == null:
+		return
+	_camera.position = world_position
+
+
+func _update_camera(delta: float) -> void:
+	if _camera == null:
+		return
+	var direction := Vector2.ZERO
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		direction.x -= 1.0
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		direction.x += 1.0
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		direction.y -= 1.0
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		direction.y += 1.0
+	if direction != Vector2.ZERO:
+		_camera.position += direction.normalized() * CAMERA_PAN_SPEED * delta / _camera.zoom.x
+
+
+## 能完整看到整张地图的最小缩放。
+func _min_camera_zoom() -> float:
+	var board := map_view.BOARD_SIZE
+	var viewport_size := get_viewport_rect().size
+	return minf(viewport_size.x / board.x, viewport_size.y / board.y) * CAMERA_ZOOM_MARGIN
+
+
+## 以鼠标位置为锚点缩放镜头。
+func _zoom_camera(factor: float) -> void:
+	if _camera == null:
+		return
+	var old_zoom := _camera.zoom.x
+	var new_zoom := clampf(old_zoom * factor, _min_camera_zoom(), CAMERA_MAX_ZOOM)
+	if is_equal_approx(new_zoom, old_zoom):
+		return
+	var viewport_size := get_viewport_rect().size
+	var screen := get_viewport().get_mouse_position()
+	var world_before := _camera.position + (screen - viewport_size * 0.5) / old_zoom
+	_camera.zoom = Vector2(new_zoom, new_zoom)
+	_camera.position = world_before - (screen - viewport_size * 0.5) / new_zoom
 
 
 func add_projectile(projectile: Node2D) -> void:
@@ -262,7 +342,7 @@ func _handle_left_click(world_position: Vector2) -> void:
 	if unit != null:
 		_set_selection([unit])
 		return
-	if is_instance_valid(_hero) and _hero.is_alive() and world_position.distance_to(_hero.global_position) <= Metrics.art(26.0):
+	if is_instance_valid(_hero) and _hero.is_alive() and world_position.distance_to(_hero.global_position) <= Metrics.art(32.0):
 		_set_selection([_hero])
 		return
 

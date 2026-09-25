@@ -142,7 +142,7 @@ func _process(delta: float) -> void:
 	var distance := offset.length()
 	var attack_range := Metrics.combat_range(float(definition.get("attack_range", 30.0)))
 	if distance > attack_range:
-		var move_speed := float(definition.get("move_speed", 70.0))
+		var move_speed := Metrics.speed(float(definition.get("move_speed", 70.0)))
 		global_position += offset.normalized() * minf(distance - attack_range * 0.85, move_speed * delta)
 	elif _attack_cooldown <= 0.0:
 		_attack_target()
@@ -166,7 +166,7 @@ func _return_to_garrison(delta: float, gentle: bool = false) -> void:
 	var offset := _garrison_spot - global_position
 	if offset.length() <= 4.0:
 		return
-	var speed := (64.0 if gentle else 120.0)
+	var speed := Metrics.speed(64.0 if gentle else 120.0)
 	global_position += offset.normalized() * minf(offset.length(), speed * delta)
 
 
@@ -214,7 +214,7 @@ func _attack_target() -> void:
 	projectile.setup(
 		_target,
 		damage,
-		float(definition.get("projectile_speed", 420.0)),
+		Metrics.speed(float(definition.get("projectile_speed", 420.0))),
 		Color(str(definition.get("attack_color", "#e8ffff"))),
 		float(definition.get("splash_radius", 0.0)),
 		float(definition.get("slow_factor", 1.0)),

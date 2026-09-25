@@ -3,6 +3,7 @@ extends CanvasLayer
 
 const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
 const CirnoSprite = preload("res://scripts/entities/cirno_sprite.gd")
+const MinimapScript = preload("res://scripts/ui/minimap.gd")
 
 signal build_item_selected(build_id: String)
 signal start_wave_requested
@@ -18,6 +19,7 @@ const VIEWPORT_SIZE := Vector2(1180.0, 660.0)
 const TOP_BAR_HEIGHT := 72.0
 const DOCK_HEIGHT := 126.0
 const DOCK_COLLAPSED_HEIGHT := 36.0
+const MINIMAP_SIZE := Vector2(176.0, 132.0)
 
 var _hp_label: Label
 var _hp_bar: ProgressBar
@@ -53,6 +55,8 @@ var _result_overlay: Control
 var _result_title: Label
 var _result_description: Label
 
+var _minimap: BattleMinimap
+
 var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _frost := 0
@@ -61,12 +65,27 @@ var _hp_bar_fill_tier := 2
 
 func _ready() -> void:
 	_build_top_bar()
+	_build_minimap()
 	_build_dock()
 	_build_detail_panel()
 	_build_modifier_overlay()
 	_build_settlement_overlay()
 	_build_result_overlay()
 	select_build_item("icicle")
+
+
+## 右上角小地图：缩略全图 + 镜头范围，点击跳转。
+func _build_minimap() -> void:
+	_minimap = MinimapScript.new()
+	_minimap.position = Vector2(VIEWPORT_SIZE.x - MINIMAP_SIZE.x - 8.0, TOP_BAR_HEIGHT + 8.0)
+	_minimap.size = MINIMAP_SIZE
+	add_child(_minimap)
+
+
+## 由游戏场景注入引用，小地图借此读取单位位置并回传镜头跳转。
+func setup_minimap(game: Node) -> void:
+	if _minimap != null:
+		_minimap.setup(game)
 
 
 ## 需求 3：顶部横贯状态栏 —— 琪露诺血条、冻气、冰晶、波次、状态文字。
