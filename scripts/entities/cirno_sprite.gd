@@ -65,8 +65,8 @@ static func make_sprite() -> AnimatedSprite2D:
 	var sprite := AnimatedSprite2D.new()
 	sprite.sprite_frames = frames
 	sprite.animation = "idle"
-	# 96px 帧缩到约 24 世界单位（2 格高），与旧版像素精灵的局内尺寸一致。
-	sprite.scale = Vector2(0.25, 0.25)
+	# 96px 帧缩到约 48 世界单位（4 格高）。
+	sprite.scale = Vector2(0.5, 0.5)
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.animation_finished.connect(func() -> void:
 		if sprite.animation != "death" and sprite.animation != "idle" and sprite.animation != "walk":
