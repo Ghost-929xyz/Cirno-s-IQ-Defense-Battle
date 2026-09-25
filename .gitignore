@@ -6,4 +6,4 @@
 *.tmp
 *.log
 ~$*.docx
-`ntools/__pycache__/
+tools/__pycache__/
