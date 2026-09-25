@@ -16,9 +16,9 @@
 Presentation        BattleHUD、LakeMapView、HitEffect、EnchantDrop
 Game Flow           FogLakeLevel、WaveManager、UpgradeManager
 Entity Simulation   DefenseStructure、CirnoTower、FairyBarracks
-                    CirnoHero、FairyEnemy、AllyUnit、TowerProjectile
+					CirnoHero、FairyEnemy、AllyUnit、TowerProjectile
 Data                BuildCatalog、TowerCatalog、BarracksCatalog
-                    AllyCatalog、EnemyCatalog、WaveCatalog、UpgradeCatalog
+					AllyCatalog、EnemyCatalog、WaveCatalog、UpgradeCatalog
 Platform            Godot Node/Scene、输入、绘制、音频接口预留
 ```
 

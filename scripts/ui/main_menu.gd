@@ -3,6 +3,8 @@ extends Control
 ## 游戏开始菜单：标题、开始游戏、操作说明与退出。
 
 const GAME_SCENE_PATH := "res://scenes/main.tscn"
+const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
+const CirnoSprite = preload("res://scripts/entities/cirno_sprite.gd")
 
 var _help_panel: Panel
 var _snow: Array[Dictionary] = []
@@ -50,27 +52,43 @@ func _seed_snow() -> void:
 
 
 func _build_ui() -> void:
-	var title := _make_label(self, "琪露诺的智商保卫战", Vector2(140.0, 118.0), Vector2(900.0, 64.0), 46, Color("#ebfdff"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 左列：标题 + 冰晶装饰条 + 副标题 + 纵向菜单按钮。
+	var title := _make_label(self, "琪露诺的智商保卫战", Vector2(90.0, 108.0), Vector2(560.0, 60.0), 44, Color("#ebfdff"))
 
-	var subtitle := _make_label(self, "雾之湖 · 塔防 Roguelike 原型", Vector2(140.0, 190.0), Vector2(900.0, 30.0), 18, Color("#8fc7dd"))
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var banner_texture: Texture2D = PixelUITheme.icon("title_banner.png")
+	if banner_texture != null:
+		var banner := TextureRect.new()
+		banner.texture = banner_texture
+		banner.position = Vector2(90.0, 178.0)
+		banner.size = Vector2(560.0, 24.0)
+		banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		add_child(banner)
+
+	var subtitle := _make_label(self, "雾之湖 · 塔防 Roguelike 原型", Vector2(90.0, 214.0), Vector2(420.0, 30.0), 18, Color("#8fc7dd"))
+
+	# 右侧：高清琪露诺立绘作为视觉主体（idle 帧动画）。
+	var hero_sprite := CirnoSprite.make_sprite()
+	if hero_sprite != null:
+		hero_sprite.scale = Vector2(2.1, 2.1)
+		hero_sprite.position = Vector2(905.0, 330.0)
+		add_child(hero_sprite)
 
 	var start_button := _make_menu_button("开始游戏", Color("#2f8b70"), 20)
-	start_button.position = Vector2(480.0, 350.0)
-	start_button.size = Vector2(220.0, 60.0)
+	start_button.position = Vector2(130.0, 330.0)
+	start_button.size = Vector2(240.0, 60.0)
 	start_button.pressed.connect(start_game)
 	add_child(start_button)
 
 	var help_button := _make_menu_button("操作说明", Color("#246f99"), 15)
-	help_button.position = Vector2(480.0, 424.0)
-	help_button.size = Vector2(220.0, 48.0)
+	help_button.position = Vector2(130.0, 410.0)
+	help_button.size = Vector2(240.0, 50.0)
 	help_button.pressed.connect(_toggle_help)
 	add_child(help_button)
 
 	var quit_button := _make_menu_button("退出游戏", Color("#5a4a7a"), 15)
-	quit_button.position = Vector2(480.0, 484.0)
-	quit_button.size = Vector2(220.0, 48.0)
+	quit_button.position = Vector2(130.0, 476.0)
+	quit_button.size = Vector2(240.0, 50.0)
 	quit_button.pressed.connect(quit_game)
 	add_child(quit_button)
 
@@ -85,7 +103,7 @@ func _build_help_panel() -> void:
 	_help_panel.position = Vector2(240.0, 100.0)
 	_help_panel.size = Vector2(700.0, 460.0)
 	_help_panel.visible = false
-	_help_panel.add_theme_stylebox_override("panel", _panel_style(Color("#0a2038"), Color("#86e9ff")))
+	_help_panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	add_child(_help_panel)
 
 	var title := _make_label(_help_panel, "操作说明", Vector2(20.0, 16.0), Vector2(660.0, 34.0), 26, Color("#edfdff"))
@@ -149,9 +167,8 @@ func _make_menu_button(text: String, color: Color, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_size_override("font_size", font_size)
-	button.add_theme_stylebox_override("normal", _button_style(color.darkened(0.38), color.lightened(0.08), 2))
-	button.add_theme_stylebox_override("hover", _button_style(color.darkened(0.16), Color("#d8fbff"), 2))
-	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.04), Color.WHITE, 2))
+	PixelUITheme.apply_button_theme(button)
+	button.add_theme_color_override("font_color", Color("#e8fcff"))
 	return button
 
 

@@ -156,7 +156,7 @@ func _find_combat_target() -> Node2D:
 
 
 func _move_along_path(delta: float) -> void:
-	var distance_left := float(definition.get("speed", 50.0)) * _slow_factor * delta
+	var distance_left := Metrics.speed(float(definition.get("speed", 50.0))) * _slow_factor * delta
 	while distance_left > 0.0 and _segment_index < _path_points.size() - 1:
 		var target := _path_points[_segment_index + 1]
 		var offset := target - global_position

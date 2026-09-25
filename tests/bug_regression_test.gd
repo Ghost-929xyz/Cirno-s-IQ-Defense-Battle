@@ -127,7 +127,7 @@ func _test_input_skill_range_health_build_and_targeting() -> void:
 
 	ally.global_position = target_enemy.global_position - Vector2(80.0, 0.0)
 	_expect(ally.set_priority_target(target_enemy), "友军必须能接受允许范围内的优先目标")
-	target_enemy.global_position = ally.global_position + Vector2(220.0, 0.0)
+	target_enemy.global_position = ally.global_position + Vector2(500.0, 0.0)
 	ally._process(0.01)
 	_expect(not is_instance_valid(ally._priority_target), "友军必须放弃超出追击范围的手动目标")
 

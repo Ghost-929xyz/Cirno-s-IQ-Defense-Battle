@@ -52,3 +52,11 @@ Godot --headless --path . -s .tools/path_test.gd --log-file path_test.log
 ```
 
 看到 `PATH_OK` 就说明这张图能被正常读取。
+
+## 像素素材（2026-09-25 重绘）
+
+- `map.png` 由 `tools/generate_pixel_assets.py` 依据 `map_user_backup.png` 的逻辑格重新绘制：
+  草地/池塘/岩石/雾气为装饰，路径、核心、出生点的逻辑色与游戏采样规则完全一致，
+  生成后脚本会自动回读校验，逻辑格不一致会直接报错。
+- 若要改路线：编辑 `map_user_backup.png`（2x2 像素=1 格，路径 #0a0f14、核心 #ffe26b、出生点 #7ef0a4），
+  然后运行 `python tools/generate_pixel_assets.py` 重新生成美术版 `map.png`。
