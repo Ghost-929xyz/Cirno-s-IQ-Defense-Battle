@@ -14,8 +14,8 @@ const TutorialOverlayScript = preload("res://scripts/ui/tutorial_overlay.gd")
 const SessionScript = preload("res://scripts/autoload/session.gd")
 
 const FROST_START := 180.0
-## 需求 7：寒气自增速度降低 50%（5.0 → 2.5）。
-const PREP_FROST_PER_SECOND := 2.5
+const WAVE_FROST_REWARD_BASE := 16.0
+const WAVE_FROST_REWARD_STEP := 4.0
 
 ## 新地图需求：兵营 2×2 格，共 4 格。
 const BARRACKS_FOOTPRINT := [
@@ -42,6 +42,7 @@ enum Phase {
 }
 
 @onready var map_view: LakeMapView = $World/MapView
+@onready var world: Node2D = $World
 @onready var towers: Node2D = $World/Towers
 @onready var barracks_container: Node2D = $World/Barracks
 @onready var allies: Node2D = $World/Allies
@@ -69,6 +70,9 @@ var _structure_cells: Dictionary = {}
 var _selected_nodes: Array[Node2D] = []
 var _status_text := "右键移动琪露诺；左键建造或框选。"
 var _enchant_open := false
+var _unclaimed_enchant_drops := 0
+var _pending_wave_finished_index := -1
+var _pending_wave_reward_index := -1
 
 var _drag_start_screen := Vector2.ZERO
 var _drag_start_world := Vector2.ZERO
@@ -96,6 +100,7 @@ func _ready() -> void:
 
 	_setup_tutorial()
 	_spawn_hero()
+	map_view.set_build_validator(can_build_at)
 	map_view.set_build_preview(_selected_build_id)
 	hud.select_build_item(_selected_build_id)
 	_refresh_hud()
@@ -117,7 +122,6 @@ func _on_tutorial_done() -> void:
 
 func _process(delta: float) -> void:
 	if phase == Phase.PREP:
-		frost += PREP_FROST_PER_SECOND * float(_upgrade_manager.modifiers.get("frost_regen_multiplier", 1.0)) * delta
 		if is_instance_valid(_hero):
 			_hero.regen(delta)
 	_refresh_hud()
@@ -159,7 +163,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode >= KEY_1 and event.keycode <= KEY_6:
 			var index := int(event.keycode - KEY_1)
 			if index >= 0 and index < BuildCatalog.ORDER.size():
-				hud.select_build_item(str(BuildCatalog.ORDER[index]))
+				_on_build_item_selected(str(BuildCatalog.ORDER[index]))
 
 
 func add_projectile(projectile: Node2D) -> void:
@@ -284,10 +288,16 @@ func _handle_right_click(world_position: Vector2) -> void:
 		if enemy != null:
 			var assigned := 0
 			for node in _selected_nodes:
-				if is_instance_valid(node) and (node is DefenseStructure or node is AllyUnit):
-					node.set_priority_target(enemy)
+				if not is_instance_valid(node) or not node.has_method("can_accept_priority_target"):
+					continue
+				if not bool(node.call("can_accept_priority_target")):
+					continue
+				if bool(node.call("set_priority_target", enemy)):
 					assigned += 1
-			_status_text = "已为 %d 个选中目标指定优先攻击 %s。" % [assigned, str(enemy.definition.get("name", "敌人"))]
+			if assigned > 0:
+				_status_text = "已为 %d 个选中目标指定优先攻击 %s。" % [assigned, str(enemy.definition.get("name", "敌人"))]
+			else:
+				_status_text = "选中的对象无法攻击该目标，或目标已超出允许范围。"
 			_refresh_hud()
 			return
 		_clear_selection()
@@ -314,6 +324,7 @@ func _pick_up_drop(world_position: Vector2) -> bool:
 	if nearest_drop == null:
 		return false
 	ice_crystals += nearest_drop.shards
+	_unclaimed_enchant_drops = maxi(0, _unclaimed_enchant_drops - 1)
 	nearest_drop.queue_free()
 	_status_text = "拾取了冰晶附魔（+%d 冰晶）。" % nearest_drop.shards
 	if phase == Phase.COMBAT and not _enchant_open:
@@ -327,6 +338,7 @@ func _on_build_item_selected(build_id: String) -> void:
 	if not BuildCatalog.ORDER.has(build_id):
 		return
 	_selected_build_id = build_id
+	hud.select_build_item(build_id)
 	map_view.set_build_preview(build_id)
 	_clear_selection()
 	var definition := BuildCatalog.get_definition(build_id)
@@ -366,6 +378,7 @@ func _try_build_structure(cell: Vector2i) -> void:
 	_sync_structure_modifiers(structure)
 	for footprint_cell in footprint:
 		_structure_cells[footprint_cell] = structure
+	map_view.queue_redraw()
 	frost -= float(cost)
 	spawn_hit_effect(structure.global_position, Color("#bdf6ff"), 38.0)
 	_status_text = "%s 部署完成。" % structure.get_display_name()
@@ -399,6 +412,12 @@ func _footprint_valid(cells: Array[Vector2i]) -> bool:
 		if _structure_cells.has(cell):
 			return false
 	return true
+
+
+func can_build_at(build_id: String, anchor: Vector2i) -> bool:
+	if not BuildCatalog.ORDER.has(build_id):
+		return false
+	return _footprint_valid(_get_footprint_cells(build_id, anchor))
 
 
 func _set_selection(nodes: Array) -> void:
@@ -505,6 +524,7 @@ func _on_structure_destroyed(structure: DefenseStructure) -> void:
 	if _selected_structure == structure:
 		_selected_structure = null
 		hud.clear_structure_detail()
+	map_view.queue_redraw()
 	_status_text = "%s 被妖精击毁了。" % structure.get_display_name()
 	_refresh_hud()
 
@@ -551,10 +571,10 @@ func _on_enemy_defeated(_enemy: FairyEnemy, reward: int, shards: int, world_posi
 	if kill_count % 8 == 0 and is_instance_valid(_hero):
 		_hero.trigger_baka_passive()
 		_status_text = "笨蛋寒气失控，周围全体减速！"
-	_wave_manager.notify_enemy_finished()
 	# 需求 8：精英不再直接弹窗，改为掉落物，左键拾取后触发附魔。
 	if shards > 0 and phase == Phase.COMBAT:
 		_spawn_enchant_drop(world_position, shards)
+	_wave_manager.notify_enemy_finished()
 
 
 func _spawn_enchant_drop(world_position: Vector2, shards: int) -> void:
@@ -562,15 +582,16 @@ func _spawn_enchant_drop(world_position: Vector2, shards: int) -> void:
 	drops.add_child(drop)
 	drop.global_position = world_position
 	drop.setup(shards)
+	_unclaimed_enchant_drops += 1
 
 
 func _on_enemy_reached_core(enemy: FairyEnemy, leak_damage: int) -> void:
-	spawn_hit_effect(map_view.get_core_world_position(), Color("#ff667f"), 42.0)
-	_wave_manager.notify_enemy_finished()
 	if phase == Phase.FINISHED:
 		return
+	spawn_hit_effect(map_view.get_core_world_position(), Color("#ff667f"), 42.0)
 	var enemy_name := str(enemy.definition.get("name", "妖精")) if enemy != null else "妖精"
 	_damage_hero(float(leak_damage), "%s 偷走了 IQ，琪露诺受到 %d 点伤害！" % [enemy_name, leak_damage])
+	_wave_manager.notify_enemy_finished()
 	_refresh_hud()
 
 
@@ -593,16 +614,26 @@ func _damage_hero(amount: float, message: String) -> void:
 func _on_wave_finished(index: int) -> void:
 	if phase == Phase.FINISHED:
 		return
+	if _unclaimed_enchant_drops > 0 or _enchant_open:
+		_pending_wave_finished_index = index
+		phase = Phase.COMBAT
+		_status_text = "本波敌人已清空，拾取并选择剩余的冰晶附魔后结算。"
+		_refresh_hud()
+		return
+	_complete_wave(index)
+
+
+func _complete_wave(index: int) -> void:
 	if index >= WaveCatalog.wave_count() - 1:
 		_finish_victory()
 		return
 
-	var income := 16.0 + index * 4.0
-	frost += income
+	_pending_wave_reward_index = index
+	var projected_reward := _get_wave_frost_reward(index)
 	ice_crystals += 1
 	phase = Phase.SETTLEMENT
-	_status_text = "守住第 %d 波，正在结算……" % (index + 1)
-	hud.show_settlement(index + 1, int(income))
+	_status_text = "守住第 %d 波，选择笨蛋灵感后领取冻气奖励。" % (index + 1)
+	hud.show_settlement(index + 1, projected_reward)
 	_refresh_hud()
 
 
@@ -610,9 +641,9 @@ func _on_settlement_continue_requested() -> void:
 	if phase != Phase.SETTLEMENT:
 		return
 	phase = Phase.UPGRADE
-	_status_text = "选择一项笨蛋灵感。"
+	_status_text = "选择一项笨蛋灵感，并领取本波冻气奖励。"
 	hud.hide_settlement()
-	hud.show_modifier_choices("blessing", "笨蛋灵感", "选择一项全局祝福，然后进入下一波。", _upgrade_manager.get_choices("blessing"))
+	hud.show_modifier_choices("blessing", "笨蛋灵感", "选择后立即领取本波冻气奖励；奖励类祝福本次生效。", _upgrade_manager.get_choices("blessing"))
 	_refresh_hud()
 
 
@@ -620,6 +651,7 @@ func _begin_enchant_choice() -> void:
 	_enchant_open = true
 	phase = Phase.ENCHANT
 	_wave_manager.set_paused(true)
+	_set_combat_simulation_paused(true)
 	_status_text = "精英妖精掉落了冰晶。选择一项附魔。"
 	hud.show_modifier_choices("enchant", "冰晶附魔", "精英掉落：为整支防线注入一枚冰晶。", _upgrade_manager.get_choices("enchant"))
 	_refresh_hud()
@@ -641,12 +673,26 @@ func _on_modifier_card_selected(pool: String, modifier_id: String) -> void:
 
 	if pool == "enchant":
 		_enchant_open = false
-		phase = Phase.COMBAT
 		_wave_manager.set_paused(false)
-		_status_text = "获得「%s」，战斗继续。" % str(definition.get("name", "冰晶附魔"))
+		_set_combat_simulation_paused(false)
+		if _pending_wave_finished_index >= 0 and _unclaimed_enchant_drops <= 0:
+			var finished_index := _pending_wave_finished_index
+			_pending_wave_finished_index = -1
+			_complete_wave(finished_index)
+		else:
+			phase = Phase.COMBAT
+			if _pending_wave_finished_index >= 0:
+				_status_text = "获得「%s」，请继续拾取剩余附魔。" % str(definition.get("name", "冰晶附魔"))
+			else:
+				_status_text = "获得「%s」，战斗继续。" % str(definition.get("name", "冰晶附魔"))
 	else:
+		var frost_reward := 0
+		if _pending_wave_reward_index >= 0:
+			frost_reward = _get_wave_frost_reward(_pending_wave_reward_index)
+			frost += float(frost_reward)
+			_pending_wave_reward_index = -1
 		phase = Phase.PREP
-		_status_text = "获得「%s」。准备下一波。" % str(definition.get("name", "祝福"))
+		_status_text = "获得「%s」，波末冻气 +%d。准备下一波。" % [str(definition.get("name", "祝福")), frost_reward]
 	_refresh_hud()
 
 
@@ -670,10 +716,10 @@ func _on_upgrade_structure_requested() -> void:
 
 
 func _on_hero_skill_requested(slot: String) -> void:
-	if not is_instance_valid(_hero):
+	if phase != Phase.COMBAT or not is_instance_valid(_hero):
 		return
 	if not _hero.try_cast_skill(slot):
-		_status_text = "技能尚未冷却。"
+		_status_text = "技能尚未冷却，或范围内没有合法目标。"
 	else:
 		_status_text = "琪露诺释放了%s。" % ("冰霜新星" if slot == "nova" else "完美冻结")
 	_refresh_hud()
@@ -716,6 +762,12 @@ func _get_build_cost(definition: Dictionary) -> int:
 	return int(round(float(definition.get("cost", 0)) * float(_upgrade_manager.modifiers.get("build_cost_multiplier", 1.0))))
 
 
+func _get_wave_frost_reward(index: int) -> int:
+	var base_reward := WAVE_FROST_REWARD_BASE + maxf(0.0, float(index)) * WAVE_FROST_REWARD_STEP
+	var multiplier := float(_upgrade_manager.modifiers.get("wave_frost_reward_multiplier", 1.0))
+	return maxi(0, int(round(base_reward * multiplier)))
+
+
 func _get_unit_spawn_position(origin: Vector2) -> Vector2:
 	var nearest_path := map_view.get_closest_path_world_position(origin)
 	var offset := nearest_path - origin
@@ -725,6 +777,16 @@ func _get_unit_spawn_position(origin: Vector2) -> Vector2:
 	var result := origin + offset + Vector2(0.0, Metrics.art(18.0))
 	var play_rect := map_view.get_play_rect().grow(-Metrics.art(15.0))
 	return Vector2(clampf(result.x, play_rect.position.x, play_rect.end.x), clampf(result.y, play_rect.position.y, play_rect.end.y))
+
+
+func _set_combat_simulation_paused(value: bool) -> void:
+	world.process_mode = Node.PROCESS_MODE_DISABLED if value else Node.PROCESS_MODE_INHERIT
+
+
+func _stop_combat_simulation() -> void:
+	if is_instance_valid(_wave_manager):
+		_wave_manager.stop()
+	_set_combat_simulation_paused(true)
 
 
 func _refresh_hud() -> void:
@@ -756,7 +818,9 @@ func _refresh_hud() -> void:
 
 
 func _finish_victory() -> void:
+	_pending_wave_finished_index = -1
 	phase = Phase.FINISHED
+	_stop_combat_simulation()
 	_status_text = "灵梦退治失败，琪露诺安然无恙。"
 	_refresh_hud()
 	hud.show_result(true, "你保护了琪露诺，守住了她的 IQ。\n剩余生命：%d / %d\n累计击退妖精：%d" % [get_hero_hp(), get_hero_max_hp(), total_kills])
@@ -764,6 +828,7 @@ func _finish_victory() -> void:
 
 func _finish_defeat() -> void:
 	phase = Phase.FINISHED
+	_stop_combat_simulation()
 	_status_text = "琪露诺倒下了，IQ 被妖精们偷光了。"
 	_refresh_hud()
 	hud.show_result(false, "琪露诺的生命归零了。\n坚持到第 %d 波，击退妖精 %d 只。" % [wave_index + 1, total_kills])
