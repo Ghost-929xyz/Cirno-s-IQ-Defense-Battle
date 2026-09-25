@@ -13,10 +13,10 @@ const BLESSINGS := [
 	{
 		"id": "winter_lesson",
 		"name": "冬日补课",
-		"description": "准备阶段的冻气恢复速度 +40%。",
+		"description": "每次波末冻气奖励 +40%。",
 		"rarity": "普通",
 		"max_stacks": 3,
-		"effects": {"frost_regen_multiplier_add": 0.40},
+		"effects": {"wave_frost_reward_multiplier_add": 0.40},
 	},
 	{
 		"id": "bigger_baka",
@@ -144,10 +144,10 @@ const ENCHANTS := [
 	{
 		"id": "frozen_treasure",
 		"name": "冻财冰晶",
-		"description": "冰晶附魔：建筑造价 -12%，准备阶段回气 +10%。",
+		"description": "冰晶附魔：建筑造价 -12%，波末冻气奖励 +10%。",
 		"rarity": "冰晶附魔",
 		"max_stacks": 2,
-		"effects": {"build_cost_multiplier_add": -0.12, "frost_regen_multiplier_add": 0.10},
+		"effects": {"build_cost_multiplier_add": -0.12, "wave_frost_reward_multiplier_add": 0.10},
 	},
 ]
 

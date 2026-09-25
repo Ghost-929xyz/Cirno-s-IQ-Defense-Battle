@@ -34,8 +34,20 @@ func update_modifiers(modifiers: Dictionary) -> void:
 	queue_redraw()
 
 
-func set_priority_target(target: Node2D) -> void:
-	_priority_target = target
+func can_accept_priority_target() -> bool:
+	return true
+
+
+func set_priority_target(target: Node2D) -> bool:
+	if target is not FairyEnemy:
+		return false
+	var enemy := target as FairyEnemy
+	if not is_instance_valid(enemy) or not enemy.is_alive():
+		return false
+	if global_position.distance_to(enemy.global_position) > range_pixels:
+		return false
+	_priority_target = enemy
+	return true
 
 
 func get_detail_text() -> String:

@@ -69,7 +69,7 @@ HUD 是 CanvasLayer，全部控件由代码构建，包含：
 - 管理准备、交战、结算、附魔、祝福与结束阶段（`PREP / COMBAT / SETTLEMENT / UPGRADE / ENCHANT / FINISHED`）。
 - 处理建造、升级、选择建筑和英雄移动。
 - 维护 `_structure_cells`，把网格位置映射到建筑实例；防御塔与兵营按占地轮廓登记格。
-- 接收妖精死亡、漏怪、建筑摧毁和波次结束信号；波末进入 `SETTLEMENT` 结算收益（需求 5）。
+- 接收妖精死亡、漏怪、建筑摧毁和波次结束信号；波末进入 `SETTLEMENT`，玩家选择祝福后一次性发放随波次增长的冻气奖励（需求 5）。
 - 调用 `UpgradeManager` 取得三选一并同步全局修正。
 - 负责左键点选 / 框选（`_select_objects_in_rect`）友方与建筑，并让选中的塔 / 单位右键指定攻击目标（需求 10）。
 - 击杀精英时在 `Drops` 下生成 `EnchantDrop` 十字芒星掉落物，左键点击拾取后进入附魔三选一（需求 8）。
@@ -219,4 +219,3 @@ godot --headless --path . --script .tools/settlement_test.gd # 波末结算 -> �
 `smoke_test` 会实例化主场景，建造一座冰锥塔和一座冰晶兵营，开始第 1 波，等待妖精与己方兵种生成，然后释放 Q/R。`ui_test` 额外校验菜单场景、四条入口路径、波次数据中的 `entrance` 合法性以及引导推进。`battle_test` 从四个入口混编增兵，验证塔、兵营、英雄技能与漏怪扣除琪露诺生命全链路无报错。`settlement_test` 驱动 `_on_wave_finished → SETTLEMENT → _on_settlement_continue_requested → UPGRADE(祝福三选一) → PREP` 全链路。
 
 窗口截图验证（需要真实渲染）由 `.tools/screenshot.gd` 提供，输出到 `%TEMP%/gamemakers_shots/`。
-

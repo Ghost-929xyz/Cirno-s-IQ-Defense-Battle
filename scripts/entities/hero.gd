@@ -56,10 +56,7 @@ func update_modifiers(modifiers: Dictionary) -> void:
 	attack_interval = 0.68 / _attack_speed_multiplier
 	frost_nova_cooldown = 8.0 * _cooldown_multiplier
 	absolute_freeze_cooldown = 16.0 * _cooldown_multiplier
-	var previous_max := max_hp
 	max_hp = BASE_MAX_HP + float(modifiers.get("hero_max_hp_add", 0.0))
-	if max_hp > previous_max:
-		current_hp += max_hp - previous_max
 	current_hp = clampf(current_hp, 0.0, max_hp)
 	queue_redraw()
 
@@ -119,8 +116,7 @@ func try_cast_skill(slot: String) -> bool:
 		_cast_frost_nova()
 		return true
 	if slot == "freeze" and _freeze_cooldown <= 0.0:
-		_cast_absolute_freeze()
-		return true
+		return _cast_absolute_freeze()
 	return false
 
 
@@ -230,7 +226,7 @@ func _cast_frost_nova() -> void:
 	_owner_game.spawn_hit_effect(global_position, Color("#a8f4ff"), 152.0)
 
 
-func _cast_absolute_freeze() -> void:
+func _cast_absolute_freeze() -> bool:
 	var target: FairyEnemy = null
 	var nearest_distance := INF
 	for enemy_node in get_tree().get_nodes_in_group("enemies"):
@@ -242,11 +238,12 @@ func _cast_absolute_freeze() -> void:
 			target = enemy
 			nearest_distance = distance
 	if target == null:
-		return
+		return false
 	_freeze_cooldown = absolute_freeze_cooldown
 	target.apply_freeze(3.0)
 	target.take_damage(12.0 * _damage_multiplier)
 	_owner_game.spawn_hit_effect(target.global_position, Color("#ffffff"), 48.0)
+	return true
 
 
 func _draw() -> void:

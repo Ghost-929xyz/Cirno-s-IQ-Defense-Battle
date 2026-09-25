@@ -13,7 +13,7 @@ var modifiers := {
 	"hero_cooldown_multiplier": 1.0,
 	"slow_bonus": 0.0,
 	"splash_multiplier": 1.0,
-	"frost_regen_multiplier": 1.0,
+	"wave_frost_reward_multiplier": 1.0,
 	"hero_max_hp_add": 0.0,
 	"build_cost_multiplier": 1.0,
 }
@@ -87,8 +87,8 @@ func _apply_effect(effect_key: String, value: float) -> void:
 			modifiers["slow_bonus"] = minf(0.55, float(modifiers["slow_bonus"]) + value)
 		"splash_multiplier_add":
 			modifiers["splash_multiplier"] = float(modifiers["splash_multiplier"]) + value
-		"frost_regen_multiplier_add":
-			modifiers["frost_regen_multiplier"] = float(modifiers["frost_regen_multiplier"]) + value
+		"wave_frost_reward_multiplier_add":
+			modifiers["wave_frost_reward_multiplier"] = float(modifiers["wave_frost_reward_multiplier"]) + value
 		"hero_max_hp_add":
 			modifiers["hero_max_hp_add"] = float(modifiers["hero_max_hp_add"]) + value
 		"build_cost_multiplier_add":

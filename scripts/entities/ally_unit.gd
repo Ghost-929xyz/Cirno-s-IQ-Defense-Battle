@@ -89,9 +89,20 @@ func set_selected(value: bool) -> void:
 
 
 ## 需求 10：主动指定攻击目标。
-func set_priority_target(target: Node2D) -> void:
-	if target is FairyEnemy:
-		_priority_target = target as FairyEnemy
+func can_accept_priority_target() -> bool:
+	return true
+
+
+func set_priority_target(target: Node2D) -> bool:
+	if target is not FairyEnemy:
+		return false
+	var enemy := target as FairyEnemy
+	if not is_instance_valid(enemy) or not enemy.is_alive():
+		return false
+	if global_position.distance_to(enemy.global_position) > Metrics.combat_range(AGGRO_RANGE):
+		return false
+	_priority_target = enemy
+	return true
 
 
 func _process(delta: float) -> void:
@@ -109,9 +120,19 @@ func _process(delta: float) -> void:
 		_return_to_garrison(delta)
 		return
 
+	var aggro_range := Metrics.combat_range(AGGRO_RANGE)
 	if is_instance_valid(_priority_target) and _priority_target.is_alive():
-		_target = _priority_target
-	elif not is_instance_valid(_target) or not _target.is_alive():
+		if global_position.distance_to(_priority_target.global_position) <= aggro_range:
+			_target = _priority_target
+		else:
+			if _target == _priority_target:
+				_target = null
+			_priority_target = null
+	else:
+		_priority_target = null
+	if is_instance_valid(_target) and global_position.distance_to(_target.global_position) > aggro_range:
+		_target = null
+	if not is_instance_valid(_target) or not _target.is_alive():
 		_target = _find_target()
 	if not is_instance_valid(_target):
 		_return_to_garrison(delta, true)
