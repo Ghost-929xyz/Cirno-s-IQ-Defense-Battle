@@ -3,6 +3,8 @@ extends Control
 ## 游戏开始菜单：标题、开始游戏、操作说明与退出。
 
 const GAME_SCENE_PATH := "res://scenes/main.tscn"
+const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
+const CirnoSprite = preload("res://scripts/entities/cirno_sprite.gd")
 
 var _help_panel: Panel
 var _snow: Array[Dictionary] = []
@@ -56,6 +58,13 @@ func _build_ui() -> void:
 	var subtitle := _make_label(self, "雾之湖 · 塔防 Roguelike 原型", Vector2(140.0, 190.0), Vector2(900.0, 30.0), 18, Color("#8fc7dd"))
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
+	# 标题旁的像素琪露诺（idle 帧动画展示）。
+	var hero_sprite := CirnoSprite.make_sprite()
+	if hero_sprite != null:
+		hero_sprite.scale = Vector2(3.4, 3.4)
+		hero_sprite.position = Vector2(268.0, 158.0)
+		add_child(hero_sprite)
+
 	var start_button := _make_menu_button("开始游戏", Color("#2f8b70"), 20)
 	start_button.position = Vector2(480.0, 350.0)
 	start_button.size = Vector2(220.0, 60.0)
@@ -85,7 +94,7 @@ func _build_help_panel() -> void:
 	_help_panel.position = Vector2(240.0, 100.0)
 	_help_panel.size = Vector2(700.0, 460.0)
 	_help_panel.visible = false
-	_help_panel.add_theme_stylebox_override("panel", _panel_style(Color("#0a2038"), Color("#86e9ff")))
+	_help_panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	add_child(_help_panel)
 
 	var title := _make_label(_help_panel, "操作说明", Vector2(20.0, 16.0), Vector2(660.0, 34.0), 26, Color("#edfdff"))
@@ -149,9 +158,8 @@ func _make_menu_button(text: String, color: Color, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_size_override("font_size", font_size)
-	button.add_theme_stylebox_override("normal", _button_style(color.darkened(0.38), color.lightened(0.08), 2))
-	button.add_theme_stylebox_override("hover", _button_style(color.darkened(0.16), Color("#d8fbff"), 2))
-	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.04), Color.WHITE, 2))
+	PixelUITheme.apply_button_theme(button)
+	button.add_theme_color_override("font_color", Color("#e8fcff"))
 	return button
 
 

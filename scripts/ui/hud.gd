@@ -1,6 +1,9 @@
 class_name BattleHUD
 extends CanvasLayer
 
+const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
+const CirnoSprite = preload("res://scripts/entities/cirno_sprite.gd")
+
 signal build_item_selected(build_id: String)
 signal start_wave_requested
 signal upgrade_structure_requested
@@ -53,7 +56,7 @@ var _result_description: Label
 var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _frost := 0
-var _hp_bar_fill_color := Color("#4fd39a")
+var _hp_bar_fill_tier := 2
 
 
 func _ready() -> void:
@@ -71,10 +74,23 @@ func _build_top_bar() -> void:
 	var bar := Panel.new()
 	bar.position = Vector2.ZERO
 	bar.size = Vector2(VIEWPORT_SIZE.x, TOP_BAR_HEIGHT)
-	bar.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.09, 0.16, 0.94), Color("#3d8caf")))
+	bar.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color(0.02, 0.09, 0.16, 0.94), Color("#3d8caf")))
 	add_child(bar)
 
-	var title := _make_label(bar, "琪露诺的智商保卫战", Vector2(12.0, 6.0), Vector2(176.0, 22.0), 15, Color("#ebfdff"))
+	# 琪露诺像素头像（精灵表 idle 第 0 帧）。
+	var portrait_texture := CirnoSprite.frame_texture("idle", 0)
+	if portrait_texture != null:
+		var portrait := TextureRect.new()
+		portrait.texture = portrait_texture
+		portrait.position = Vector2(14.0, 6.0)
+		portrait.size = Vector2(56.0, 56.0)
+		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		bar.add_child(portrait)
+
+	var title := _make_label(bar, "琪露诺的智商保卫战", Vector2(76.0, 6.0), Vector2(120.0, 44.0), 13, Color("#ebfdff"))
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_hp_label = _make_label(bar, "琪露诺生命 240 / 240", Vector2(198.0, 6.0), Vector2(212.0, 22.0), 15, Color("#9ff4ff"))
 	_hp_bar = ProgressBar.new()
@@ -84,8 +100,8 @@ func _build_top_bar() -> void:
 	_hp_bar.max_value = 240.0
 	_hp_bar.value = 240.0
 	_hp_bar.show_percentage = false
-	_hp_bar.add_theme_stylebox_override("background", _bar_style(Color("#0a1c2c"), Color("#2c6c8e")))
-	_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#4fd39a"), Color("#c9fff0")))
+	_hp_bar.add_theme_stylebox_override("background", PixelUITheme.bar_back())
+	_hp_bar.add_theme_stylebox_override("fill", PixelUITheme.bar_fill(1.0))
 	bar.add_child(_hp_bar)
 
 	_resource_label = _make_label(bar, "冻气 180    冰晶 0", Vector2(426.0, 6.0), Vector2(220.0, 22.0), 15, Color("#ddf8ff"))
@@ -100,7 +116,7 @@ func _build_dock() -> void:
 	_dock = Panel.new()
 	_dock.position = Vector2(0.0, VIEWPORT_SIZE.y - DOCK_HEIGHT)
 	_dock.size = Vector2(VIEWPORT_SIZE.x, DOCK_HEIGHT)
-	_dock.add_theme_stylebox_override("panel", _panel_style(Color(0.03, 0.11, 0.19, 0.86), Color("#3d8caf")))
+	_dock.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color(0.03, 0.11, 0.19, 0.86), Color("#3d8caf")))
 	add_child(_dock)
 
 	_dock_content = Control.new()
@@ -113,9 +129,7 @@ func _build_dock() -> void:
 	_dock_toggle.position = Vector2(VIEWPORT_SIZE.x - 92.0, 4.0)
 	_dock_toggle.size = Vector2(84.0, 26.0)
 	_dock_toggle.add_theme_font_size_override("font_size", 12)
-	_dock_toggle.add_theme_stylebox_override("normal", _button_style(Color("#102d46"), Color("#2c6c8e"), 1))
-	_dock_toggle.add_theme_stylebox_override("hover", _button_style(Color("#16415d"), Color("#8fe8ff"), 2))
-	_dock_toggle.add_theme_stylebox_override("pressed", _button_style(Color("#1b5a78"), Color("#d8fbff"), 2))
+	PixelUITheme.apply_button_theme(_dock_toggle)
 	_dock_toggle.pressed.connect(_on_dock_toggle_pressed)
 	_dock.add_child(_dock_toggle)
 
@@ -138,9 +152,7 @@ func _build_dock() -> void:
 			str(definition.get("role", "")),
 		]
 		button.add_theme_font_size_override("font_size", 11)
-		button.add_theme_stylebox_override("normal", _button_style(Color("#102d46"), Color("#2c6c8e"), 1))
-		button.add_theme_stylebox_override("hover", _button_style(Color("#16415d"), Color("#8fe8ff"), 2))
-		button.add_theme_stylebox_override("pressed", _button_style(Color("#1b5a78"), Color("#d8fbff"), 2))
+		PixelUITheme.apply_button_theme(button)
 		button.pressed.connect(_on_build_button_pressed.bind(str(build_id)))
 		_dock_content.add_child(button)
 		_build_buttons[str(build_id)] = button
@@ -189,7 +201,7 @@ func _build_detail_panel() -> void:
 	_detail_panel.position = Vector2(VIEWPORT_SIZE.x - 312.0, VIEWPORT_SIZE.y - DOCK_HEIGHT - 176.0)
 	_detail_panel.size = Vector2(296.0, 168.0)
 	_detail_panel.visible = false
-	_detail_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.03, 0.12, 0.21, 0.94), Color("#86e9ff")))
+	_detail_panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color(0.03, 0.12, 0.21, 0.94), Color("#86e9ff")))
 	add_child(_detail_panel)
 
 	var title := _make_label(_detail_panel, "建筑详情", Vector2(12.0, 6.0), Vector2(272.0, 20.0), 13, Color("#e7fbff"))
@@ -222,7 +234,7 @@ func _build_modifier_overlay() -> void:
 	var panel := Panel.new()
 	panel.position = Vector2((VIEWPORT_SIZE.x - 650.0) * 0.5, 78.0)
 	panel.size = Vector2(650.0, 506.0)
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#0a2038"), Color("#86e9ff")))
+	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_modifier_overlay.add_child(panel)
 
 	_modifier_title = _make_label(panel, "笨蛋灵感", Vector2(28.0, 16.0), Vector2(594.0, 36.0), 28, Color("#edfdff"))
@@ -237,8 +249,9 @@ func _build_modifier_overlay() -> void:
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size", 15)
-		button.add_theme_stylebox_override("normal", _button_style(Color("#102f4c"), Color("#2e7292"), 2))
-		button.add_theme_stylebox_override("hover", _button_style(Color("#174d67"), Color("#c7f8ff"), 3))
+		button.add_theme_stylebox_override("normal", PixelUITheme.card_style())
+		button.add_theme_stylebox_override("hover", PixelUITheme.card_style(Color("#174d67"), Color("#c7f8ff")))
+		button.add_theme_stylebox_override("pressed", PixelUITheme.card_style(Color("#0c2438"), Color("#c7f8ff")))
 		button.pressed.connect(_on_modifier_card_pressed.bind(index))
 		panel.add_child(button)
 		_modifier_buttons.append(button)
@@ -260,7 +273,7 @@ func _build_settlement_overlay() -> void:
 	var panel := Panel.new()
 	panel.position = Vector2(365.0, 206.0)
 	panel.size = Vector2(450.0, 248.0)
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#0a2038"), Color("#86e9ff")))
+	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_settlement_overlay.add_child(panel)
 
 	_settlement_title = _make_label(panel, "第 1 波 结算", Vector2(30.0, 20.0), Vector2(390.0, 36.0), 24, Color("#edfdff"))
@@ -294,7 +307,7 @@ func _build_result_overlay() -> void:
 	var panel := Panel.new()
 	panel.position = Vector2(350.0, 158.0)
 	panel.size = Vector2(480.0, 334.0)
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#0b223b"), Color("#8cecff")))
+	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0b223b"), Color("#8cecff")))
 	_result_overlay.add_child(panel)
 
 	_result_title = _make_label(panel, "IQ 保卫成功！", Vector2(30.0, 34.0), Vector2(420.0, 48.0), 32, Color("#c9fff0"))
@@ -329,10 +342,10 @@ func update_resources(hero_hp: int, hero_max_hp: int, frost: int, ice_crystals: 
 		_hp_label.add_theme_color_override("font_color", Color("#9ff4ff"))
 	_hp_bar.max_value = maxf(1.0, float(hero_max_hp))
 	_hp_bar.value = float(hero_hp)
-	var fill_color := Color("#e05a72") if ratio <= 0.35 else (Color("#e0b24a") if ratio <= 0.65 else Color("#4fd39a"))
-	if _hp_bar_fill_color != fill_color:
-		_hp_bar_fill_color = fill_color
-		_hp_bar.add_theme_stylebox_override("fill", _bar_style(fill_color, fill_color.lightened(0.35)))
+	var fill_tier := 0 if ratio <= 0.35 else (1 if ratio <= 0.65 else 2)
+	if _hp_bar_fill_tier != fill_tier:
+		_hp_bar_fill_tier = fill_tier
+		_hp_bar.add_theme_stylebox_override("fill", PixelUITheme.bar_fill(ratio))
 	_resource_label.text = "冻气  %d    冰晶  %d" % [frost, ice_crystals]
 	_wave_label.text = wave_text
 	_status_label.text = status_text
@@ -465,9 +478,8 @@ func _make_action_button(text: String, color: Color) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_size_override("font_size", 14)
-	button.add_theme_stylebox_override("normal", _button_style(color.darkened(0.38), color.lightened(0.08), 2))
-	button.add_theme_stylebox_override("hover", _button_style(color.darkened(0.16), Color("#d8fbff"), 2))
-	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.04), Color.WHITE, 2))
+	PixelUITheme.apply_button_theme(button)
+	button.add_theme_color_override("font_color", Color("#e8fcff"))
 	return button
 
 

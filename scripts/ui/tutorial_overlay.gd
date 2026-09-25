@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
+
 ## 新手引导：欢迎弹窗 + 分步引导横幅 + 开波后战斗提示。
 ## 通过 notify(event_id) 接收游戏事件并推进步骤，乱序完成也可继续。
 
@@ -78,7 +80,7 @@ func _build_welcome() -> void:
 	var panel := Panel.new()
 	panel.position = Vector2(310.0, 120.0)
 	panel.size = Vector2(560.0, 420.0)
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#0a2038"), Color("#86e9ff")))
+	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_welcome.add_child(panel)
 
 	var title := _make_label(panel, "欢迎来到雾之湖", Vector2(20.0, 20.0), Vector2(520.0, 40.0), 30, Color("#edfdff"))
@@ -118,7 +120,7 @@ func _build_banner() -> void:
 	_banner.position = Vector2(32.0, 78.0)
 	_banner.size = Vector2(720.0, 46.0)
 	_banner.visible = false
-	_banner.add_theme_stylebox_override("panel", _panel_style(Color("#0d2a40"), Color("#8fe8ff")))
+	_banner.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0d2a40"), Color("#8fe8ff")))
 	add_child(_banner)
 
 	_banner_title_label = _make_label(_banner, "新手引导 1/4", Vector2(12.0, 13.0), Vector2(110.0, 22.0), 13, Color("#ffe9a0"))
@@ -170,9 +172,8 @@ func _make_button(text: String, color: Color, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_size_override("font_size", font_size)
-	button.add_theme_stylebox_override("normal", _button_style(color.darkened(0.38), color.lightened(0.08), 2))
-	button.add_theme_stylebox_override("hover", _button_style(color.darkened(0.16), Color("#d8fbff"), 2))
-	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.04), Color.WHITE, 2))
+	PixelUITheme.apply_button_theme(button)
+	button.add_theme_color_override("font_color", Color("#e8fcff"))
 	return button
 
 
