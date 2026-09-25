@@ -1,12 +1,12 @@
 class_name CirnoSpriteFactory
 extends RefCounted
 
-## 琪露诺精灵表加载器：assets/sprites/cirno.png，24x24/帧，4 列。
+## 琪露诺精灵表加载器：assets/sprites/cirno.png，96x96/帧，4 列（高清版）。
 ## 行序：idle(4) / walk(4) / attack(4) / cast(4) / hurt(2) / death(4)。
 ## 帧均朝右绘制，需要朝左时设置 flip_h。
 
 const SHEET_PATH := "res://assets/sprites/cirno.png"
-const FRAME_SIZE := Vector2i(24, 24)
+const FRAME_SIZE := Vector2i(96, 96)
 const ROW_IDLE := 0
 const ROW_WALK := 1
 const ROW_ATTACK := 2
@@ -65,8 +65,9 @@ static func make_sprite() -> AnimatedSprite2D:
 	var sprite := AnimatedSprite2D.new()
 	sprite.sprite_frames = frames
 	sprite.animation = "idle"
-	sprite.scale = Vector2(1.0, 1.0)
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# 96px 帧缩到约 24 世界单位（2 格高），与旧版像素精灵的局内尺寸一致。
+	sprite.scale = Vector2(0.25, 0.25)
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.animation_finished.connect(func() -> void:
 		if sprite.animation != "death" and sprite.animation != "idle" and sprite.animation != "walk":
 			sprite.play("idle")

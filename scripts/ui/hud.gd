@@ -105,7 +105,7 @@ func _build_top_bar() -> void:
 		portrait.size = Vector2(56.0, 56.0)
 		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		bar.add_child(portrait)
 
 	var title := _make_label(bar, "琪露诺的智商保卫战", Vector2(76.0, 6.0), Vector2(120.0, 44.0), 13, Color("#ebfdff"))

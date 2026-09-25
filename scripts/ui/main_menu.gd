@@ -61,7 +61,7 @@ func _build_ui() -> void:
 	# 标题旁的像素琪露诺（idle 帧动画展示）。
 	var hero_sprite := CirnoSprite.make_sprite()
 	if hero_sprite != null:
-		hero_sprite.scale = Vector2(3.4, 3.4)
+		hero_sprite.scale = Vector2(0.85, 0.85)
 		hero_sprite.position = Vector2(268.0, 158.0)
 		add_child(hero_sprite)
 
