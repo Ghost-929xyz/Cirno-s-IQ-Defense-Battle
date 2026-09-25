@@ -421,9 +421,9 @@ func hide_modifier_choices() -> void:
 
 
 ## 需求 5：显示波末结算弹窗。
-func show_settlement(wave_number: int, income: int) -> void:
+func show_settlement(wave_number: int, projected_reward: int) -> void:
 	_settlement_title.text = "第 %d 波 结算" % wave_number
-	_settlement_body.text = "本波金钱收益：+%d 冻气\n当前波次兵种已返回各自兵营附近驻扎。\n点击按钮选择祝福，进入下一波。" % income
+	_settlement_body.text = "选择祝福后获得：至少 +%d 冻气\n奖励随波次提高；奖励类祝福会立即计入本次结算。\n当前波次兵种已返回兵营附近驻扎。" % projected_reward
 	_settlement_overlay.visible = true
 
 

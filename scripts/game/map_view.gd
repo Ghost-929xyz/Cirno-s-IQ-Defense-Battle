@@ -354,6 +354,14 @@ func is_buildable(cell: Vector2i) -> bool:
 	return is_inside(cell) and not is_path_cell(cell) and not is_core_cell(cell) and not is_entrance_cell(cell)
 
 
+var _build_validator := Callable()
+
+
+func set_build_validator(validator: Callable) -> void:
+	_build_validator = validator
+	queue_redraw()
+
+
 func cell_to_local(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * CELL_SIZE + CELL_SIZE * 0.5, cell.y * CELL_SIZE + CELL_SIZE * 0.5)
 
@@ -523,12 +531,16 @@ func _draw_hover() -> void:
 	if not is_inside(hover_cell):
 		return
 	var offsets: Array = BARRACKS_PREVIEW_OFFSETS if build_preview_id.ends_with("_barracks") else TOWER_PREVIEW_OFFSETS
-	var footprint_valid := true
-	for offset in offsets:
-		var cell: Vector2i = hover_cell + offset
-		if not is_buildable(cell):
-			footprint_valid = false
-			break
+	var footprint_valid := false
+	if _build_validator.is_valid():
+		footprint_valid = bool(_build_validator.call(build_preview_id, hover_cell))
+	else:
+		footprint_valid = true
+		for offset in offsets:
+			var cell: Vector2i = hover_cell + offset
+			if not is_buildable(cell):
+				footprint_valid = false
+				break
 	var valid_color := Color("#9ff4ff") if footprint_valid else Color("#ff6b83")
 	for offset in offsets:
 		var cell: Vector2i = hover_cell + offset

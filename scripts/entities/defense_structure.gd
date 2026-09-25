@@ -103,8 +103,12 @@ func get_detail_text() -> String:
 	return "%s · Lv.%d\nHP %d / %d" % [get_display_name(), level, int(ceil(current_hp)), int(max_hp)]
 
 
-func set_priority_target(_target: Node2D) -> void:
-	pass
+func can_accept_priority_target() -> bool:
+	return false
+
+
+func set_priority_target(_target: Node2D) -> bool:
+	return false
 
 
 func _apply_modifiers(_modifiers: Dictionary) -> void:

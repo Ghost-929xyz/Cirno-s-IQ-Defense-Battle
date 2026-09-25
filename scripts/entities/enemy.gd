@@ -67,7 +67,7 @@ func _process(delta: float) -> void:
 		_combat_target = _find_combat_target()
 
 	if is_instance_valid(_combat_target):
-		var engage_range := Metrics.art(float(definition.get("attack_range", 36.0)) + 12.0)
+		var engage_range := Metrics.combat_range(float(definition.get("attack_range", 36.0)) + 12.0)
 		if global_position.distance_to(_combat_target.global_position) > engage_range:
 			_combat_target = null
 		else:
@@ -130,7 +130,7 @@ func _find_combat_target() -> Node2D:
 		if ally == null or not is_instance_valid(ally) or not ally.is_alive():
 			continue
 		var distance := global_position.distance_to(ally.global_position)
-		if distance <= Metrics.art(62.0) and distance < nearest_distance:
+		if distance <= Metrics.combat_range(62.0) and distance < nearest_distance:
 			nearest = ally
 			nearest_distance = distance
 
@@ -139,11 +139,11 @@ func _find_combat_target() -> Node2D:
 		if hero == null or not is_instance_valid(hero) or not hero.is_alive():
 			continue
 		var hero_distance := global_position.distance_to(hero.global_position)
-		if hero_distance <= Metrics.art(45.0) and hero_distance < nearest_distance:
+		if hero_distance <= Metrics.combat_range(45.0) and hero_distance < nearest_distance:
 			nearest = hero
 			nearest_distance = hero_distance
 
-	var structure_reach := Metrics.art(float(definition.get("attack_range", 36.0)) + 18.0)
+	var structure_reach := Metrics.combat_range(float(definition.get("attack_range", 36.0)) + 18.0)
 	for structure_node in get_tree().get_nodes_in_group("structures"):
 		var structure := structure_node as DefenseStructure
 		if structure == null or not is_instance_valid(structure) or not structure.is_alive():
