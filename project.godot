@@ -20,10 +20,6 @@ run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/art/icon_placeholder.svg"
 
-[gui]
-
-theme/custom="res://assets/fonts/default_theme.tres"
-
 [display]
 
 window/size/viewport_width=1180
@@ -31,6 +27,10 @@ window/size/viewport_height=660
 window/size/window_width_override=1180
 window/size/window_height_override=660
 window/stretch/mode="canvas_items"
+
+[gui]
+
+theme/custom="res://assets/fonts/default_theme.tres"
 
 [rendering]
 

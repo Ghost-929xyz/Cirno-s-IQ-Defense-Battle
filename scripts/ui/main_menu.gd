@@ -1,6 +1,6 @@
 extends Control
 
-## 游戏开始菜单：标题 + 左侧竖排无边框选项（New Game / Continue / Options / Quit）。
+## 游戏开始菜单：标题 + 左侧竖排无边框选项。场景内的 GPUParticles2D 负责飘雪粒子。
 ## 选项为深蓝色无文本框样式，悬停时左侧悬浮一片雪花并高亮文本。
 
 const GAME_SCENE_PATH := "res://scenes/main.tscn"
@@ -12,7 +12,6 @@ const TEXT_NORMAL := Color("#2f6b96")
 const TEXT_HOVER := Color("#d8fbff")
 const TEXT_DISABLED := Color("#2a3d4d")
 
-var _snow: Array[Dictionary] = []
 var _menu_row_count := 0
 
 var _slot_overlay: Control = null
@@ -21,23 +20,7 @@ var _overlay_mode := ""
 
 
 func _ready() -> void:
-	_seed_snow()
 	_build_ui()
-
-
-func _process(delta: float) -> void:
-	for flake in _snow:
-		var position_value: Vector2 = flake["position"]
-		position_value.y += float(flake["speed"]) * delta
-		position_value.x += float(flake["drift"]) * delta
-		if position_value.y > 690.0:
-			position_value.y = -24.0
-		if position_value.x < -24.0:
-			position_value.x = 1204.0
-		elif position_value.x > 1204.0:
-			position_value.x = -24.0
-		flake["position"] = position_value
-	queue_redraw()
 
 
 ## 兼容旧入口：直接以无槽位模式进入游戏（测试脚本依赖此方法存在）。
@@ -47,19 +30,6 @@ func start_game() -> void:
 
 func quit_game() -> void:
 	get_tree().quit()
-
-
-func _seed_snow() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 20260923
-	for _index in range(56):
-		_snow.append({
-			"position": Vector2(rng.randf() * 1180.0, rng.randf() * 660.0),
-			"speed": rng.randf_range(10.0, 32.0),
-			"drift": rng.randf_range(-9.0, 9.0),
-			"radius": rng.randf_range(1.5, 4.0),
-			"alpha": rng.randf_range(0.22, 0.7),
-		})
 
 
 func _build_ui() -> void:
@@ -267,10 +237,6 @@ func _draw() -> void:
 		draw_line(lake_center + direction * 40.0, lake_center + direction * 180.0, Color(0.75, 0.95, 1.0, 0.1), 3.0)
 	draw_circle(lake_center, 96.0, Color(0.16, 0.42, 0.6, 0.35))
 	draw_circle(lake_center, 72.0, Color(0.65, 0.9, 1.0, 0.16))
-
-	# 飘雪
-	for flake in _snow:
-		draw_circle(flake["position"], float(flake["radius"]), Color(0.82, 0.95, 1.0, float(flake["alpha"])))
 
 
 func _make_panel_button(text: String, font_size: int) -> Button:

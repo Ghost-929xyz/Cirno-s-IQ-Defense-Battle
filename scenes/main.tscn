@@ -1,33 +1,67 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://dq82de3un357w"]
 
-[ext_resource type="Script" path="res://scripts/game/game.gd" id="1_game"]
-[ext_resource type="Script" path="res://scripts/game/map_view.gd" id="2_map"]
-[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="3_hud"]
+[ext_resource type="Script" uid="uid://dj4xsipck4bdq" path="res://scripts/game/game.gd" id="1_game"]
+[ext_resource type="Script" uid="uid://bmrwv65868yco" path="res://scripts/game/map_view.gd" id="2_map"]
+[ext_resource type="Script" uid="uid://cu7gilp66uf5o" path="res://scripts/ui/hud.gd" id="3_hud"]
+[ext_resource type="Texture2D" uid="uid://brkkp52bevaqs" path="res://assets/ui/Sprite-0001.png" id="4_jyhfs"]
 
-[node name="FogLakeLevel" type="Node2D"]
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_tbgi4"]
+particles_animation = true
+particles_anim_h_frames = 3
+particles_anim_v_frames = 3
+particles_anim_loop = false
+
+[sub_resource type="Curve" id="Curve_tefeu"]
+_data = [Vector2(0, 0.03759408), 0.0, 0.0, 0, 0, Vector2(0.3018018, 1), 0.0, 0.0, 0, 0, Vector2(0.7522522, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.3082707), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="CurveTexture" id="CurveTexture_o6xl0"]
+curve = SubResource("Curve_tefeu")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_tipki"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(1500, 1000, 1)
+angle_min = 1.0728835e-05
+angle_max = 360.00003
+direction = Vector3(1, 20, 0)
+spread = 30.938
+initial_velocity_min = 50.0
+initial_velocity_max = 150.0
+gravity = Vector3(0, 0, 0)
+alpha_curve = SubResource("CurveTexture_o6xl0")
+anim_offset_max = 1.0
+
+[node name="FogLakeLevel" type="Node2D" unique_id=1251570729]
 script = ExtResource("1_game")
 
-[node name="World" type="Node2D" parent="."]
+[node name="World" type="Node2D" parent="." unique_id=513844381]
 
-[node name="MapView" type="Node2D" parent="World"]
-position = Vector2(0, 0)
+[node name="MapView" type="Node2D" parent="World" unique_id=921403787]
 script = ExtResource("2_map")
 
-[node name="Towers" type="Node2D" parent="World"]
+[node name="Towers" type="Node2D" parent="World" unique_id=170304665]
 
-[node name="Barracks" type="Node2D" parent="World"]
+[node name="Barracks" type="Node2D" parent="World" unique_id=1781282977]
 
-[node name="Allies" type="Node2D" parent="World"]
+[node name="Allies" type="Node2D" parent="World" unique_id=807679117]
 
-[node name="Hero" type="Node2D" parent="World"]
+[node name="Hero" type="Node2D" parent="World" unique_id=102456452]
 
-[node name="Enemies" type="Node2D" parent="World"]
+[node name="Enemies" type="Node2D" parent="World" unique_id=1062873122]
 
-[node name="Projectiles" type="Node2D" parent="World"]
+[node name="Projectiles" type="Node2D" parent="World" unique_id=1607733941]
 
-[node name="Effects" type="Node2D" parent="World"]
+[node name="Effects" type="Node2D" parent="World" unique_id=1932750738]
 
-[node name="Drops" type="Node2D" parent="World"]
+[node name="Drops" type="Node2D" parent="World" unique_id=129198425]
 
-[node name="HUD" type="CanvasLayer" parent="."]
+[node name="HUD" type="CanvasLayer" parent="." unique_id=820420120]
 script = ExtResource("3_hud")
+
+[node name="GPUParticles2D" type="GPUParticles2D" parent="." unique_id=466389124]
+material = SubResource("CanvasItemMaterial_tbgi4")
+amount = 5000
+texture = ExtResource("4_jyhfs")
+lifetime = 2.0599999999999996
+process_material = SubResource("ParticleProcessMaterial_tipki")

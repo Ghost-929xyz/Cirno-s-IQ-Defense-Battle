@@ -1,8 +1,36 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://cmj6x0wdta3hu"]
 
-[ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="1_menu"]
+[ext_resource type="Script" uid="uid://bdwcfbvqq74uk" path="res://scripts/ui/main_menu.gd" id="1_menu"]
+[ext_resource type="Texture2D" uid="uid://brkkp52bevaqs" path="res://assets/ui/Sprite-0001.png" id="2_vjb58"]
 
-[node name="MainMenu" type="Control"]
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_x2474"]
+particles_animation = true
+particles_anim_h_frames = 3
+particles_anim_v_frames = 3
+particles_anim_loop = false
+
+[sub_resource type="Curve" id="Curve_jkqla"]
+_data = [Vector2(0, 0.03759408), 0.0, 0.0, 0, 0, Vector2(0.3018018, 1), 0.0, 0.0, 0, 0, Vector2(0.7522522, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.3082707), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="CurveTexture" id="CurveTexture_con2f"]
+curve = SubResource("Curve_jkqla")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_awd5k"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(1500, 1000, 1)
+angle_min = 1.0728835e-05
+angle_max = 360.00003
+direction = Vector3(1, 20, 0)
+spread = 30.938
+initial_velocity_min = 50.0
+initial_velocity_max = 150.0
+gravity = Vector3(0, 0, 0)
+alpha_curve = SubResource("CurveTexture_con2f")
+anim_offset_max = 1.0
+
+[node name="MainMenu" type="Control" unique_id=1809378895]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -10,3 +38,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_menu")
+
+[node name="GPUParticles2D" type="GPUParticles2D" parent="." unique_id=659915797]
+material = SubResource("CanvasItemMaterial_x2474")
+amount = 2000
+texture = ExtResource("2_vjb58")
+lifetime = 2.0599999999999996
+process_material = SubResource("ParticleProcessMaterial_awd5k")
