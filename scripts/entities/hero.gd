@@ -39,6 +39,7 @@ var _attack_anim_remaining := 0.0
 var _cast_anim_remaining := 0.0
 var _hurt_anim_remaining := 0.0
 var _facing := 1.0
+var _move_dir := Vector2.DOWN
 
 
 func _ready() -> void:
@@ -182,7 +183,9 @@ func _process(delta: float) -> void:
 		if offset.length() <= 5.0:
 			move_target = Vector2.INF
 		else:
-			global_position += offset.normalized() * minf(offset.length(), move_speed * delta)
+			var dir := offset.normalized()
+			global_position += dir * minf(offset.length(), move_speed * delta)
+			_move_dir = dir
 			if absf(offset.x) > 1.0:
 				_facing = signf(offset.x)
 
@@ -202,10 +205,11 @@ func _process(delta: float) -> void:
 func _update_sprite_animation() -> void:
 	if _sprite == null:
 		return
-	if _facing < 0.0:
-		_sprite.flip_h = true
-	else:
+	var directional := CirnoSprite.is_directional(_sprite.sprite_frames)
+	if directional:
 		_sprite.flip_h = false
+	else:
+		_sprite.flip_h = _facing < 0.0
 	if _flash_remaining > 0.0:
 		_sprite.modulate = Color(2.2, 2.2, 2.2, 1.0)
 	else:
@@ -219,8 +223,17 @@ func _update_sprite_animation() -> void:
 		anim = "attack"
 	elif move_target.is_finite():
 		anim = "walk"
+	if directional and (anim == "idle" or anim == "walk"):
+		anim += "_" + _direction_suffix()
 	if _sprite.animation != anim:
 		_sprite.play(anim)
+
+
+## 四向动画行选择：横向占优取 left/right，纵向占优取 up/down。
+func _direction_suffix() -> String:
+	if absf(_move_dir.x) >= absf(_move_dir.y):
+		return "left" if _move_dir.x < 0.0 else "right"
+	return "up" if _move_dir.y < 0.0 else "down"
 
 
 func _die() -> void:

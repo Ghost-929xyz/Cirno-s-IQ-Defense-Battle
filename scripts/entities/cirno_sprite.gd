@@ -1,18 +1,15 @@
 class_name CirnoSpriteFactory
 extends RefCounted
 
-## 琪露诺精灵表加载器：assets/sprites/cirno.png，96x96/帧，4 列（高清版）。
-## 行序：idle(4) / walk(4) / attack(4) / cast(4) / hurt(2) / death(4)。
-## 帧均朝右绘制，需要朝左时设置 flip_h。
+## 琪露诺精灵表加载器：assets/sprites/cirno.png，96x96/帧，自动识别两种版式：
+## 1) 四向行走版（8 列 x 4 行 = 768x384）：行序 down / left / right / up，每行 8 帧行走循环；
+##    派生 walk_down/left/right/up 与 idle_down/left/right/up（取第 0 帧），
+##    另生成 idle/walk/attack/cast/hurt/death 兼容别名，旧状态机无需改动。
+## 2) 旧动作版（4 列 x 6 行）：idle / walk / attack / cast / hurt / death，帧均朝右，朝左用 flip_h。
 
 const SHEET_PATH := "res://assets/sprites/cirno.png"
 const FRAME_SIZE := Vector2i(96, 96)
-const ROW_IDLE := 0
-const ROW_WALK := 1
-const ROW_ATTACK := 2
-const ROW_CAST := 3
-const ROW_HURT := 4
-const ROW_DEATH := 5
+const DIRECTIONS: Array[String] = ["down", "left", "right", "up"]
 
 static var _frames: SpriteFrames = null
 
@@ -26,6 +23,10 @@ static func _load_sheet() -> Texture2D:
 	return null
 
 
+static func is_directional(frames: SpriteFrames) -> bool:
+	return frames != null and frames.has_animation("walk_down")
+
+
 static func get_sprite_frames() -> SpriteFrames:
 	if _frames != null:
 		return _frames
@@ -33,14 +34,39 @@ static func get_sprite_frames() -> SpriteFrames:
 	if sheet == null:
 		return null
 	var frames := SpriteFrames.new()
-	_add_row(frames, "idle", sheet, ROW_IDLE, 4, 5.0, true)
-	_add_row(frames, "walk", sheet, ROW_WALK, 4, 9.0, true)
-	_add_row(frames, "attack", sheet, ROW_ATTACK, 4, 14.0, false)
-	_add_row(frames, "cast", sheet, ROW_CAST, 4, 11.0, false)
-	_add_row(frames, "hurt", sheet, ROW_HURT, 2, 9.0, false)
-	_add_row(frames, "death", sheet, ROW_DEATH, 4, 6.0, false)
+	var cols := sheet.get_width() / FRAME_SIZE.x
+	var rows := sheet.get_height() / FRAME_SIZE.y
+	if cols >= 8 and rows >= 4:
+		_load_directional(frames, sheet)
+	else:
+		_load_legacy(frames, sheet)
 	_frames = frames
 	return frames
+
+
+## 四向行走版：行 0=down 1=left 2=right 3=up，每行 8 帧。
+static func _load_directional(frames: SpriteFrames, sheet: Texture2D) -> void:
+	for row in range(DIRECTIONS.size()):
+		var suffix := DIRECTIONS[row]
+		_add_row(frames, "walk_" + suffix, sheet, row, 8, 9.0, true)
+		_add_row(frames, "idle_" + suffix, sheet, row, 1, 5.0, true)
+	# 兼容别名：攻击/施法/受击/阵亡暂用 down 行帧顶替，保证旧状态机播放不报错。
+	_add_row(frames, "idle", sheet, 0, 1, 5.0, true)
+	_add_row(frames, "walk", sheet, 0, 8, 9.0, true)
+	_add_row(frames, "attack", sheet, 0, 4, 14.0, false)
+	_add_row(frames, "cast", sheet, 0, 4, 11.0, false)
+	_add_row(frames, "hurt", sheet, 0, 2, 9.0, false)
+	_add_row(frames, "death", sheet, 0, 4, 6.0, false)
+
+
+## 旧动作版：行 0=idle 1=walk 2=attack 3=cast 4=hurt 5=death。
+static func _load_legacy(frames: SpriteFrames, sheet: Texture2D) -> void:
+	_add_row(frames, "idle", sheet, 0, 4, 5.0, true)
+	_add_row(frames, "walk", sheet, 1, 4, 9.0, true)
+	_add_row(frames, "attack", sheet, 2, 4, 14.0, false)
+	_add_row(frames, "cast", sheet, 3, 4, 11.0, false)
+	_add_row(frames, "hurt", sheet, 4, 2, 9.0, false)
+	_add_row(frames, "death", sheet, 5, 4, 6.0, false)
 
 
 static func _add_row(frames: SpriteFrames, anim: String, sheet: Texture2D, row: int, count: int, fps: float, loop: bool) -> void:
