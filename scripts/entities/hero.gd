@@ -9,6 +9,8 @@ const Metrics = preload("res://scripts/game/game_metrics.gd")
 
 ## 需求 7：英雄数值整体下调（190 血 / 普攻 14 / 新星 22 / 冻结 12 / 被动 6）。
 const BASE_MAX_HP := 190.0
+## 空场时以 10Hz 重新索敌，避免每帧扫描敌人节点组。
+const TARGET_RETRY_INTERVAL := 0.1
 
 var arena_rect := Rect2()
 var _wasd_moving := false
@@ -33,6 +35,7 @@ var _attack_speed_multiplier := 1.0
 var _cooldown_multiplier := 1.0
 var _flash_remaining := 0.0
 var _dead := false
+var _target_retry_cooldown := 0.0
 var _selected := false
 var _sprite: AnimatedSprite2D = null
 var _attack_anim_remaining := 0.0
@@ -162,6 +165,7 @@ func _process(delta: float) -> void:
 		return
 	_bob_time += delta
 	_attack_cooldown -= delta
+	_target_retry_cooldown = maxf(0.0, _target_retry_cooldown - delta)
 	_nova_cooldown = maxf(0.0, _nova_cooldown - delta)
 	_freeze_cooldown = maxf(0.0, _freeze_cooldown - delta)
 	if _flash_remaining > 0.0:
@@ -195,10 +199,13 @@ func _process(delta: float) -> void:
 	_cast_anim_remaining = maxf(0.0, _cast_anim_remaining - delta)
 	_hurt_anim_remaining = maxf(0.0, _hurt_anim_remaining - delta)
 
-	var target := _find_target()
-	if target != null and _attack_cooldown <= 0.0:
-		_fire_at(target)
-		_attack_cooldown = attack_interval
+	if _attack_cooldown <= 0.0 and _target_retry_cooldown <= 0.0:
+		var target := _find_target()
+		if target != null:
+			_fire_at(target)
+			_attack_cooldown = attack_interval
+		else:
+			_target_retry_cooldown = TARGET_RETRY_INTERVAL
 	_update_sprite_animation()
 	queue_redraw()
 

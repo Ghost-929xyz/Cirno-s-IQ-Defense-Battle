@@ -11,6 +11,8 @@ const ProjectileScript = preload("res://scripts/entities/projectile.gd")
 const AGGRO_RANGE := 150.0
 ## 需求 5：兵种回到出生兵营附近 7×7 格范围内驻扎（锚点 ±3 格）。
 const GARRISON_HALF_CELLS := 3
+## 战斗状态且没有目标时，以约 7Hz 重新索敌，避免大量兵种每帧扫描敌人组。
+const TARGET_RETRY_INTERVAL := 0.15
 
 var definition: Dictionary = {}
 var max_hp := 1.0
@@ -27,6 +29,7 @@ var _active := false
 var _selected := false
 var _garrison_anchor := Vector2.INF
 var _garrison_spot := Vector2.INF
+var _target_retry_cooldown := 0.0
 
 var _damage_multiplier := 1.0
 var _attack_speed_multiplier := 1.0
@@ -110,6 +113,7 @@ func _process(delta: float) -> void:
 		return
 	_bob_time += delta
 	_attack_cooldown -= delta
+	_target_retry_cooldown = maxf(0.0, _target_retry_cooldown - delta)
 	if _flash_remaining > 0.0:
 		_flash_remaining = maxf(0.0, _flash_remaining - delta)
 		queue_redraw()
@@ -132,8 +136,10 @@ func _process(delta: float) -> void:
 		_priority_target = null
 	if is_instance_valid(_target) and global_position.distance_to(_target.global_position) > aggro_range:
 		_target = null
-	if not is_instance_valid(_target) or not _target.is_alive():
+	if (not is_instance_valid(_target) or not _target.is_alive()) and _target_retry_cooldown <= 0.0:
 		_target = _find_target()
+		if not is_instance_valid(_target):
+			_target_retry_cooldown = TARGET_RETRY_INTERVAL
 	if not is_instance_valid(_target):
 		_return_to_garrison(delta, true)
 		return

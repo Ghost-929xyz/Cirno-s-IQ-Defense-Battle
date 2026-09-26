@@ -17,6 +17,8 @@ const PauseMenuScript = preload("res://scripts/ui/pause_menu.gd")
 const FROST_START := 180.0
 const WAVE_FROST_REWARD_BASE := 16.0
 const WAVE_FROST_REWARD_STEP := 4.0
+## HUD 每秒刷新 30 次即可，避免每帧重复构造文本和更新控件。
+const HUD_REFRESH_INTERVAL := 1.0 / 30.0
 
 ## 新地图需求：兵营 2×2 格，共 4 格。
 const BARRACKS_FOOTPRINT := [
@@ -73,6 +75,7 @@ var _enchant_open := false
 var _unclaimed_enchant_drops := 0
 var _pending_wave_finished_index := -1
 var _pending_wave_reward_index := -1
+var _hud_refresh_cooldown := 0.0
 
 var _drag_start_screen := Vector2.ZERO
 var _drag_start_world := Vector2.ZERO
@@ -149,7 +152,10 @@ func _process(delta: float) -> void:
 		if is_instance_valid(_hero):
 			_hero.regen(delta)
 	_update_camera(delta)
-	_refresh_hud()
+	_hud_refresh_cooldown -= delta
+	if _hud_refresh_cooldown <= 0.0:
+		_hud_refresh_cooldown = HUD_REFRESH_INTERVAL
+		_refresh_hud()
 
 
 func _unhandled_input(event: InputEvent) -> void:

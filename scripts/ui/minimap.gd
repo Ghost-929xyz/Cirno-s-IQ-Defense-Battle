@@ -4,8 +4,11 @@ extends Control
 ## 小地图：显示整张地图缩略图、敌我位置与当前镜头范围。
 ## 左键点击或拖动可把镜头跳转到对应位置。
 
+const REDRAW_INTERVAL := 1.0 / 15.0
+
 var _game: Node
 var _panning := false
+var _redraw_cooldown := 0.0
 
 
 func setup(game: Node) -> void:
@@ -16,9 +19,14 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
-func _process(_delta: float) -> void:
-	if visible:
-		queue_redraw()
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	_redraw_cooldown -= delta
+	if _redraw_cooldown > 0.0:
+		return
+	_redraw_cooldown = REDRAW_INTERVAL
+	queue_redraw()
 
 
 func _world_to_map(world_position: Vector2) -> Vector2:

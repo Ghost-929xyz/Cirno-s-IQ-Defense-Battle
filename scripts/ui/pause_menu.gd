@@ -1,18 +1,25 @@
 extends CanvasLayer
 
 ## 游戏内暂停菜单：P / Esc 呼出。
-## 选项样式与主菜单一致：无边框文字 + 悬浮渐变下划线 + 柔光冰晶 + 上浮膨胀。
+## 全屏遮罩下悬浮显示选项，带遮罩淡入和选项错峰上浮动画。
 ## process_mode = ALWAYS，保证 get_tree().paused 时仍能响应输入。
 
 const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
 const SessionScript = preload("res://scripts/autoload/session.gd")
+const OPTION_SIZE := Vector2(320.0, 44.0)
+const OPTION_GAP := 6.0
+const OPTION_COUNT := 4
 
 signal resume_requested
 signal save_and_quit_requested
 signal quit_requested
 
 var _save_button: Button
-var _panel: Panel
+var _dimmer: ColorRect
+var _menu_root: Control
+var _menu_buttons: Array[Button] = []
+var _open_tween: Tween
+var _item_tweens: Array[Tween] = []
 var _options_overlay: Control = null
 
 
@@ -28,9 +35,11 @@ func show_menu(can_save: bool) -> void:
 	_save_button.tooltip_text = "" if can_save else "仅在备战阶段（且本局绑定了存档槽位）可保存。"
 	visible = true
 	get_tree().paused = true
+	_play_open_animation()
 
 
 func hide_menu() -> void:
+	_stop_open_animation()
 	_hide_options_overlay()
 	visible = false
 	get_tree().paused = false
@@ -53,35 +62,16 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _build_ui() -> void:
-	var dimmer := ColorRect.new()
-	dimmer.color = Color(0.02, 0.05, 0.09, 0.72)
-	dimmer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(dimmer)
+	_dimmer = ColorRect.new()
+	_dimmer.color = Color(0.02, 0.05, 0.09, 0.72)
+	_dimmer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dimmer.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_dimmer)
 
-	_panel = Panel.new()
-	_panel.size = Vector2(460.0, 356.0)
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.position = -_panel.size * 0.5
-	_panel.add_theme_stylebox_override("panel", _solid_panel_style())
-	add_child(_panel)
-
-	var title := Label.new()
-	title.text = "暂停"
-	title.position = Vector2(0.0, 22.0)
-	title.size = Vector2(460.0, 40.0)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 30)
-	title.add_theme_color_override("font_color", Color("#edfdff"))
-	_panel.add_child(title)
-
-	var hint := Label.new()
-	hint.text = "P / Esc 继续游戏"
-	hint.position = Vector2(0.0, 66.0)
-	hint.size = Vector2(460.0, 22.0)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 13)
-	hint.add_theme_color_override("font_color", Color("#8fc7dd"))
-	_panel.add_child(hint)
+	_menu_root = Control.new()
+	_menu_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_menu_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_menu_root)
 
 	_add_menu_option("继续游戏", 0, func() -> void: resume_requested.emit())
 	_add_menu_option("游戏设置", 1, _show_options_overlay)
@@ -90,16 +80,65 @@ func _build_ui() -> void:
 
 
 func _add_menu_option(text: String, index: int, handler: Callable) -> Button:
+	var total_height := OPTION_SIZE.y * OPTION_COUNT + OPTION_GAP * (OPTION_COUNT - 1)
+	var menu_size := Vector2(OPTION_SIZE.x, total_height)
+	var menu_origin := (get_viewport().get_visible_rect().size - menu_size) * 0.5
+
 	var button := Button.new()
 	button.text = text
-	button.position = Vector2(100.0, 100.0 + float(index) * 58.0)
-	button.size = Vector2(340.0, 48.0)
+	button.position = menu_origin + Vector2(0.0, float(index) * (OPTION_SIZE.y + OPTION_GAP))
+	button.size = OPTION_SIZE
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	button.add_theme_font_size_override("font_size", 23)
-	_panel.add_child(button)
-	PixelUITheme.attach_menu_option_fx(button, _panel, button.position, true)
+	button.add_theme_font_size_override("font_size", 21)
+	button.set_meta("base_position", button.position)
+	_menu_root.add_child(button)
+	PixelUITheme.attach_menu_option_fx(button, _menu_root, button.position, true)
 	button.pressed.connect(handler)
+	_menu_buttons.append(button)
 	return button
+
+
+## 遮罩淡入，选项依次上浮、淡入并轻微放大到最终位置。
+func _play_open_animation() -> void:
+	_stop_open_animation()
+	if _dimmer == null:
+		return
+
+	_dimmer.modulate.a = 0.0
+	_open_tween = create_tween()
+	_open_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_open_tween.tween_property(_dimmer, "modulate:a", 1.0, 0.16)
+
+	for index in range(_menu_buttons.size()):
+		var button: Button = _menu_buttons[index]
+		var base_position: Vector2 = button.get_meta("base_position")
+		var delay := 0.04 + float(index) * 0.05
+		button.position = base_position + Vector2(0.0, 12.0)
+		button.modulate.a = 0.0
+		button.scale = Vector2(0.96, 0.96)
+
+		var tween := create_tween().set_parallel(true)
+		tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tween.tween_property(button, "position:y", base_position.y, 0.24).set_delay(delay)
+		tween.tween_property(button, "modulate:a", 1.0, 0.18).set_delay(delay)
+		tween.tween_property(button, "scale", Vector2.ONE, 0.26).set_delay(delay).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_item_tweens.append(tween)
+
+
+func _stop_open_animation() -> void:
+	if _open_tween != null and _open_tween.is_valid():
+		_open_tween.kill()
+	_open_tween = null
+	for tween in _item_tweens:
+		if tween != null and tween.is_valid():
+			tween.kill()
+	_item_tweens.clear()
+	if _dimmer != null:
+		_dimmer.modulate.a = 1.0
+	for button in _menu_buttons:
+		button.position = button.get_meta("base_position")
+		button.scale = Vector2.ONE
+		button.modulate.a = 1.0
 
 
 # ---------------------------------------------------------------- 游戏设置弹层
@@ -150,20 +189,6 @@ func _hide_options_overlay() -> void:
 	if _options_overlay != null:
 		_options_overlay.queue_free()
 		_options_overlay = null
-
-
-## 纯色面板样式：无纹理，半透明深蓝底 + 冰蓝描边。
-func _solid_panel_style() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.13, 0.22, 0.96)
-	style.border_color = Color("#86e9ff")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(10)
-	style.content_margin_left = 10.0
-	style.content_margin_top = 10.0
-	style.content_margin_right = 10.0
-	style.content_margin_bottom = 10.0
-	return style
 
 
 func _make_panel_button(text: String, font_size: int) -> Button:
