@@ -95,7 +95,7 @@ func _build_ui() -> void:
 	_add_menu_item("Quit", quit_game)
 
 
-## 无边框菜单选项：深蓝色文字，悬停/聚焦时左侧出现悬浮雪花并高亮文本。
+## 无边框菜单选项：深蓝色文字，悬停/聚焦时文本高亮并在文字下方浮现 banner 贴图。
 func _add_menu_item(text: String, handler: Callable, disabled := false) -> void:
 	var row_y := 300.0 + float(_menu_row_count) * 58.0
 	_menu_row_count += 1
@@ -121,51 +121,56 @@ func _add_menu_item(text: String, handler: Callable, disabled := false) -> void:
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	add_child(button)
 
-	# 悬浮雪花指示器（默认隐藏）。
-	var flake := TextureRect.new()
-	var flake_texture: Texture2D = PixelUITheme.icon("icon_frost.png")
-	flake.texture = flake_texture
-	flake.visible = false
-	flake.position = Vector2(96.0, row_y + 11.0)
-	flake.size = Vector2(26.0, 26.0)
-	flake.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	flake.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	flake.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(flake)
+	# 文字下方的 banner 指示贴图（默认隐藏，悬浮/聚焦时淡入）。
+	var banner := TextureRect.new()
+	var banner_texture: Texture2D = PixelUITheme.icon("title_banner.png")
+	banner.texture = banner_texture
+	banner.visible = false
+	banner.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	banner.position = Vector2(142.0, row_y + 42.0)
+	banner.size = Vector2(180.0, 8.0)
+	banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	banner.stretch_mode = TextureRect.STRETCH_SCALE
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(banner)
 
-	var base_flake_y := flake.position.y
 	button.mouse_entered.connect(func() -> void:
-		if button.disabled:
-			return
-		flake.visible = true
-		_float_flake(flake, base_flake_y)
+		if not button.disabled:
+			_show_banner(banner)
 	)
 	button.mouse_exited.connect(func() -> void:
-		flake.visible = false
+		_hide_banner(banner)
 	)
 	button.focus_entered.connect(func() -> void:
-		if button.disabled:
-			return
-		flake.visible = true
-		_float_flake(flake, base_flake_y)
+		if not button.disabled:
+			_show_banner(banner)
 	)
 	button.focus_exited.connect(func() -> void:
-		flake.visible = false
+		_hide_banner(banner)
 	)
 	if not disabled:
 		button.pressed.connect(handler)
 
 
-## 雪花上下悬浮动画。
-func _float_flake(flake: TextureRect, base_y: float) -> void:
-	var tween := create_tween().set_loops()
-	tween.tween_property(flake, "position:y", base_y - 4.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(flake, "position:y", base_y + 4.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	flake.tree_exiting.connect(tween.kill)
-	flake.visibility_changed.connect(func() -> void:
-		if not flake.visible:
-			tween.kill()
+## banner 淡入。
+func _show_banner(banner: TextureRect) -> void:
+	banner.visible = true
+	var tween := create_tween()
+	tween.tween_property(banner, "modulate:a", 1.0, 0.12)
+	banner.tree_exiting.connect(tween.kill)
+
+
+## banner 淡出后隐藏。
+func _hide_banner(banner: TextureRect) -> void:
+	if not is_instance_valid(banner):
+		return
+	var tween := create_tween()
+	tween.tween_property(banner, "modulate:a", 0.0, 0.15)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(banner):
+			banner.visible = false
 	)
+	banner.tree_exiting.connect(tween.kill)
 
 
 # ---------------------------------------------------------------- 存档槽位界面
