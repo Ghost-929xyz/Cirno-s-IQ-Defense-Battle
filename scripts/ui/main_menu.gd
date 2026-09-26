@@ -92,10 +92,10 @@ func _build_ui() -> void:
 			break
 
 	_menu_row_count = 0
-	_add_menu_item("New Game", _on_new_game_pressed)
-	_add_menu_item("Continue", _on_continue_pressed, not has_any_save)
-	_add_menu_item("Options", _on_options_pressed)
-	_add_menu_item("Quit", quit_game)
+	_add_menu_item("新的游戏", _on_new_game_pressed)
+	_add_menu_item("继续游戏", _on_continue_pressed, not has_any_save)
+	_add_menu_item("游戏设置", _on_options_pressed)
+	_add_menu_item("退出游戏", quit_game)
 
 
 ## 无边框菜单选项：深蓝色文字；悬停/聚焦时文本高亮并微微上浮膨胀，
@@ -352,7 +352,7 @@ func _on_options_pressed() -> void:
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_options_overlay.add_child(panel)
 
-	var title := _make_label(panel, "Options", Vector2(20.0, 18.0), Vector2(360.0, 34.0), 24, Color("#edfdff"))
+	var title := _make_label(panel, "游戏设置", Vector2(20.0, 18.0), Vector2(360.0, 34.0), 24, Color("#edfdff"))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var reset_tutorial := _make_panel_button("重置新手引导", 15)
