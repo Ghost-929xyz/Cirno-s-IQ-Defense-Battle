@@ -11,7 +11,7 @@ const Metrics = preload("res://scripts/game/game_metrics.gd")
 const BASE_MAX_HP := 190.0
 
 var arena_rect := Rect2()
-var move_target := Vector2.INF
+var _wasd_moving := false
 var attack_range := Metrics.combat_range(145.0)
 var attack_interval := 0.68
 var attack_damage := 14.0
@@ -111,16 +111,6 @@ func get_max_hp() -> float:
 	return max_hp
 
 
-func set_move_target(world_position: Vector2) -> void:
-	if _dead:
-		return
-	move_target = Vector2(
-		clampf(world_position.x, arena_rect.position.x + 12.0, arena_rect.end.x - 12.0),
-		clampf(world_position.y, arena_rect.position.y + 12.0, arena_rect.end.y - 12.0)
-	)
-	queue_redraw()
-
-
 func try_cast_skill(slot: String) -> bool:
 	if _dead:
 		return false
@@ -178,16 +168,28 @@ func _process(delta: float) -> void:
 		_flash_remaining = maxf(0.0, _flash_remaining - delta)
 		queue_redraw()
 
-	if move_target.is_finite():
-		var offset := move_target - global_position
-		if offset.length() <= 5.0:
-			move_target = Vector2.INF
-		else:
-			var dir := offset.normalized()
-			global_position += dir * minf(offset.length(), move_speed * delta)
-			_move_dir = dir
-			if absf(offset.x) > 1.0:
-				_facing = signf(offset.x)
+	# WASD 四向直接移动（右键寻路已移除），位置限制在场地内。
+	var input_dir := Vector2.ZERO
+	if Input.is_key_pressed(KEY_W):
+		input_dir.y -= 1.0
+	if Input.is_key_pressed(KEY_S):
+		input_dir.y += 1.0
+	if Input.is_key_pressed(KEY_A):
+		input_dir.x -= 1.0
+	if Input.is_key_pressed(KEY_D):
+		input_dir.x += 1.0
+	_wasd_moving = input_dir.length_squared() > 0.0
+	if _wasd_moving:
+		var dir := input_dir.normalized()
+		global_position = Vector2(
+			clampf(global_position.x + dir.x * move_speed * delta, arena_rect.position.x + 12.0, arena_rect.end.x - 12.0),
+			clampf(global_position.y + dir.y * move_speed * delta, arena_rect.position.y + 12.0, arena_rect.end.y - 12.0)
+		)
+		_move_dir = dir
+		if absf(dir.x) > 0.1:
+			_facing = signf(dir.x)
+		if is_instance_valid(_owner_game):
+			_owner_game.notify_hero_moved()
 
 	_attack_anim_remaining = maxf(0.0, _attack_anim_remaining - delta)
 	_cast_anim_remaining = maxf(0.0, _cast_anim_remaining - delta)
@@ -221,7 +223,7 @@ func _update_sprite_animation() -> void:
 		anim = "hurt"
 	elif _attack_anim_remaining > 0.0:
 		anim = "attack"
-	elif move_target.is_finite():
+	elif _wasd_moving:
 		anim = "walk"
 	if directional and (anim == "idle" or anim == "walk"):
 		anim += "_" + _direction_suffix()
@@ -240,7 +242,7 @@ func _die() -> void:
 	if _dead:
 		return
 	_dead = true
-	move_target = Vector2.INF
+	_wasd_moving = false
 	if _sprite != null:
 		_sprite.modulate = Color.WHITE
 		_sprite.play("death")
@@ -326,18 +328,6 @@ func _cast_absolute_freeze() -> bool:
 func _draw() -> void:
 	var body_radius := maxf(4.2, Metrics.cells(0.95))
 	var bob := sin(_bob_time * 5.2) * 0.6
-	# 需求 9：脚底方向箭头（不再绘制移动轨迹线）
-	if not _dead and move_target.is_finite():
-		var move_offset := move_target - global_position
-		if move_offset.length() > 2.0:
-			var direction := move_offset.normalized()
-			var arrow_base := Vector2(0.0, body_radius * 1.55 + bob)
-			var tip := arrow_base + direction * maxf(7.0, body_radius * 1.8)
-			var back_left := arrow_base + direction.rotated(2.55) * maxf(4.0, body_radius)
-			var back_right := arrow_base + direction.rotated(-2.55) * maxf(4.0, body_radius)
-			draw_colored_polygon(PackedVector2Array([tip, back_left, back_right]), Color(0.10, 0.88, 1.0, 0.88))
-			draw_polyline(PackedVector2Array([tip, back_left, back_right, tip]), Color("#dffcff"), 1.0, true)
-
 	if _selected:
 		var selection_radius := maxf(7.0, body_radius * 1.65)
 		draw_arc(Vector2.ZERO, selection_radius, 0.0, TAU, 40, Color(0.45, 0.96, 1.0, 0.85), 1.6)

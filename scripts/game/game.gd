@@ -68,7 +68,7 @@ var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _structure_cells: Dictionary = {}
 var _selected_nodes: Array[Node2D] = []
-var _status_text := "左键建造或框选；右键移动琪露诺、拆除己方建筑；P 暂停；WASD/中键平移镜头，滚轮缩放。"
+var _status_text := "WASD 移动琪露诺；左键建造或框选，右键拆除己方建筑、指定优先攻击；方向键/中键平移镜头，滚轮缩放；P 暂停。"
 var _enchant_open := false
 var _unclaimed_enchant_drops := 0
 var _pending_wave_finished_index := -1
@@ -79,7 +79,7 @@ var _drag_start_world := Vector2.ZERO
 var _is_dragging := false
 const _DRAG_THRESHOLD := 6.0
 
-## 大地图镜头：WASD/方向键/中键拖拽平移，滚轮缩放，小地图点击跳转。
+## 大地图镜头：方向键/中键拖拽平移，滚轮缩放，小地图点击跳转；英雄走出中心区域时自动跟随。
 const CAMERA_PAN_SPEED := 760.0
 const CAMERA_MAX_ZOOM := 2.5
 const CAMERA_ZOOM_MARGIN := 0.95
@@ -233,16 +233,25 @@ func _update_camera(delta: float) -> void:
 	if _camera == null:
 		return
 	var direction := Vector2.ZERO
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+	if Input.is_key_pressed(KEY_LEFT):
 		direction.x -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+	if Input.is_key_pressed(KEY_RIGHT):
 		direction.x += 1.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+	if Input.is_key_pressed(KEY_UP):
 		direction.y -= 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+	if Input.is_key_pressed(KEY_DOWN):
 		direction.y += 1.0
 	if direction != Vector2.ZERO:
 		_camera.position += direction.normalized() * CAMERA_PAN_SPEED * delta / _camera.zoom.x
+	# 英雄死区跟随：走出视野中心区域时相机自动跟上，手动平移不受影响。
+	if is_instance_valid(_hero):
+		var half_view := get_viewport_rect().size / _camera.zoom.x * 0.5
+		var margin := half_view * 0.55
+		var diff: Vector2 = _hero.global_position - _camera.position
+		if absf(diff.x) > margin.x:
+			_camera.position.x = _hero.global_position.x - signf(diff.x) * margin.x
+		if absf(diff.y) > margin.y:
+			_camera.position.y = _hero.global_position.y - signf(diff.y) * margin.y
 
 
 ## 能完整看到整张地图的最小缩放。
@@ -410,11 +419,6 @@ func _handle_right_click(world_position: Vector2) -> void:
 		_clear_selection()
 		_refresh_hud()
 		return
-	if is_instance_valid(_hero):
-		_hero.set_move_target(world_position)
-		_status_text = "琪露诺正在赶路。"
-		_notify_tutorial("move")
-		_refresh_hud()
 
 
 func _pick_up_drop(world_position: Vector2) -> bool:
@@ -1019,6 +1023,11 @@ func _get_structure_anchor(structure: DefenseStructure) -> Vector2i:
 func _autosave() -> void:
 	if SessionScript.current_slot >= 0:
 		save_game(SessionScript.current_slot)
+
+
+## 英雄 WASD 移动时回调：驱动新手引导的 move 步骤。
+func notify_hero_moved() -> void:
+	_notify_tutorial("move")
 
 
 func _notify_tutorial(event_id: String) -> void:
