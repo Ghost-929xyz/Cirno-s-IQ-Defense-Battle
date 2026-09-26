@@ -59,15 +59,16 @@ func _build_ui() -> void:
 	add_child(dimmer)
 
 	_panel = Panel.new()
-	_panel.position = Vector2(380.0, 150.0)
-	_panel.size = Vector2(520.0, 430.0)
-	_panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color(0.03, 0.12, 0.21, 0.97), Color("#86e9ff")))
+	_panel.size = Vector2(460.0, 356.0)
+	_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_panel.position = -_panel.size * 0.5
+	_panel.add_theme_stylebox_override("panel", _solid_panel_style())
 	add_child(_panel)
 
 	var title := Label.new()
 	title.text = "暂停"
 	title.position = Vector2(0.0, 22.0)
-	title.size = Vector2(520.0, 40.0)
+	title.size = Vector2(460.0, 40.0)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color("#edfdff"))
@@ -76,7 +77,7 @@ func _build_ui() -> void:
 	var hint := Label.new()
 	hint.text = "P / Esc 继续游戏"
 	hint.position = Vector2(0.0, 66.0)
-	hint.size = Vector2(520.0, 22.0)
+	hint.size = Vector2(460.0, 22.0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", Color("#8fc7dd"))
@@ -91,8 +92,8 @@ func _build_ui() -> void:
 func _add_menu_option(text: String, index: int, handler: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.position = Vector2(120.0, 118.0 + float(index) * 62.0)
-	button.size = Vector2(360.0, 50.0)
+	button.position = Vector2(100.0, 100.0 + float(index) * 58.0)
+	button.size = Vector2(340.0, 48.0)
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.add_theme_font_size_override("font_size", 23)
 	_panel.add_child(button)
@@ -149,6 +150,20 @@ func _hide_options_overlay() -> void:
 	if _options_overlay != null:
 		_options_overlay.queue_free()
 		_options_overlay = null
+
+
+## 纯色面板样式：无纹理，半透明深蓝底 + 冰蓝描边。
+func _solid_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.13, 0.22, 0.96)
+	style.border_color = Color("#86e9ff")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 10.0
+	style.content_margin_top = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_bottom = 10.0
+	return style
 
 
 func _make_panel_button(text: String, font_size: int) -> Button:
