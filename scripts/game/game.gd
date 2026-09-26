@@ -12,6 +12,7 @@ const HitEffectScript = preload("res://scripts/effects/hit_effect.gd")
 const EnchantDropScript = preload("res://scripts/entities/drop.gd")
 const TutorialOverlayScript = preload("res://scripts/ui/tutorial_overlay.gd")
 const SessionScript = preload("res://scripts/autoload/session.gd")
+const PauseMenuScript = preload("res://scripts/ui/pause_menu.gd")
 
 const FROST_START := 180.0
 const WAVE_FROST_REWARD_BASE := 16.0
@@ -62,11 +63,12 @@ var _wave_manager: WaveManager
 var _upgrade_manager: UpgradeManager
 var _hero: CirnoHero
 var _tutorial: CanvasLayer
+var _pause_menu: CanvasLayer
 var _selected_build_id := "icicle"
 var _selected_structure: DefenseStructure
 var _structure_cells: Dictionary = {}
 var _selected_nodes: Array[Node2D] = []
-var _status_text := "右键移动琪露诺；左键建造或框选；WASD/中键平移镜头，滚轮缩放。"
+var _status_text := "左键建造或框选；右键移动琪露诺、拆除己方建筑；P 暂停；WASD/中键平移镜头，滚轮缩放。"
 var _enchant_open := false
 var _unclaimed_enchant_drops := 0
 var _pending_wave_finished_index := -1
@@ -88,6 +90,8 @@ var _camera_dragging := false
 
 func _ready() -> void:
 	add_to_group("game")
+	if SessionScript.pending_load_slot >= 0:
+		SessionScript.tutorial_done = true
 	_wave_manager = WaveManager.new()
 	add_child(_wave_manager)
 	_wave_manager.wave_started.connect(_on_wave_started)
@@ -104,6 +108,7 @@ func _ready() -> void:
 	hud.menu_requested.connect(_on_menu_requested)
 	hud.settlement_continue_requested.connect(_on_settlement_continue_requested)
 
+	_setup_pause_menu()
 	_setup_camera()
 	_setup_tutorial()
 	_spawn_hero()
@@ -112,6 +117,17 @@ func _ready() -> void:
 	hud.select_build_item(_selected_build_id)
 	hud.setup_minimap(self)
 	_refresh_hud()
+	var restored := false
+	if SessionScript.pending_load_slot >= 0:
+		var load_slot := SessionScript.pending_load_slot
+		SessionScript.pending_load_slot = -1
+		SessionScript.current_slot = load_slot
+		var save_data := SaveManager.read_slot(load_slot)
+		if not save_data.is_empty():
+			restore_game(save_data)
+			restored = true
+	if not restored and SessionScript.current_slot >= 0:
+		save_game(SessionScript.current_slot)
 
 
 func _setup_tutorial() -> void:
@@ -173,8 +189,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_clear_selection()
+		if event.keycode == KEY_P:
+			_toggle_pause_menu()
+		elif event.keycode == KEY_ESCAPE:
+			if _selected_nodes.size() > 0:
+				_clear_selection()
+			else:
+				_toggle_pause_menu()
 		elif event.keycode == KEY_SPACE:
 			_on_start_wave_requested()
 		elif event.keycode == KEY_Q:
@@ -362,6 +383,12 @@ func _handle_left_click(world_position: Vector2) -> void:
 
 
 func _handle_right_click(world_position: Vector2) -> void:
+	# 需求：右键己方建筑直接拆除并返还部分冻气。
+	if phase == Phase.PREP or phase == Phase.COMBAT:
+		var clicked_structure := _find_structure_at(map_view.world_to_cell(world_position))
+		if clicked_structure != null:
+			_demolish_structure(clicked_structure)
+			return
 	# 需求 10：框选/点选后，右键妖精指定优先攻击目标
 	if _selected_nodes.size() > 0:
 		var enemy := _find_enemy_at(world_position)
@@ -773,6 +800,7 @@ func _on_modifier_card_selected(pool: String, modifier_id: String) -> void:
 			_pending_wave_reward_index = -1
 		phase = Phase.PREP
 		_status_text = "获得「%s」，波末冻气 +%d。准备下一波。" % [str(definition.get("name", "祝福")), frost_reward]
+		_autosave()
 	_refresh_hud()
 
 
@@ -810,7 +838,187 @@ func _on_restart_requested() -> void:
 
 
 func _on_menu_requested() -> void:
+	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+## 暂停菜单：P / Esc 呼出。
+func _setup_pause_menu() -> void:
+	_pause_menu = PauseMenuScript.new()
+	_pause_menu.name = "PauseMenu"
+	add_child(_pause_menu)
+	_pause_menu.resume_requested.connect(_on_pause_resume)
+	_pause_menu.save_and_quit_requested.connect(_on_pause_save_and_quit)
+	_pause_menu.quit_requested.connect(_on_pause_quit)
+
+
+func _toggle_pause_menu() -> void:
+	if _pause_menu == null:
+		return
+	if _pause_menu.is_menu_open():
+		_pause_menu.hide_menu()
+		return
+	var can_save := phase == Phase.PREP and SessionScript.current_slot >= 0
+	_pause_menu.show_menu(can_save)
+
+
+func _on_pause_resume() -> void:
+	_pause_menu.hide_menu()
+
+
+func _on_pause_save_and_quit() -> void:
+	if phase == Phase.PREP and SessionScript.current_slot >= 0:
+		save_game(SessionScript.current_slot)
+	_pause_menu.hide_menu()
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+func _on_pause_quit() -> void:
+	_pause_menu.hide_menu()
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+## 右键拆除建筑：按总投入（建造 + 各级升级）的 70% 返还冻气。
+func _demolish_structure(structure: DefenseStructure) -> void:
+	if structure == null or not is_instance_valid(structure):
+		return
+	var base_cost := float(structure.definition.get("cost", 0))
+	var invested := base_cost
+	for upgrade_level in range(1, structure.level):
+		invested += base_cost * (0.62 + 0.24 * upgrade_level)
+	var refund := int(round(invested * 0.7))
+	frost += float(refund)
+	var display_name := structure.get_display_name()
+	spawn_hit_effect(structure.global_position, Color("#9adfff"), 30.0)
+	structure.demolish()
+	_status_text = "已拆除 %s，返还冻气 %d。" % [display_name, refund]
+	_refresh_hud()
+
+
+## 序列化当前对局（备战阶段调用）。
+func save_game(slot: int) -> bool:
+	var structures_data: Array = []
+	for structure_node in get_tree().get_nodes_in_group("structures"):
+		var structure := structure_node as DefenseStructure
+		if structure == null or not is_instance_valid(structure) or not structure.is_alive():
+			continue
+		var anchor := _get_structure_anchor(structure)
+		structures_data.append({
+			"id": str(structure.definition.get("id", "")),
+			"anchor": [anchor.x, anchor.y],
+			"level": structure.level,
+			"hp": structure.current_hp,
+		})
+	var hero_hp := 0.0
+	var hero_position := [0.0, 0.0]
+	if is_instance_valid(_hero):
+		hero_hp = _hero.get_hp()
+		hero_position = [_hero.global_position.x, _hero.global_position.y]
+	var data := {
+		"wave_index": wave_index,
+		"frost": frost,
+		"ice_crystals": ice_crystals,
+		"kill_count": kill_count,
+		"total_kills": total_kills,
+		"hero": {"hp": hero_hp, "position": hero_position},
+		"structures": structures_data,
+		"modifiers": _upgrade_manager.modifiers.duplicate(true),
+		"stacks": _upgrade_manager.stacks.duplicate(true),
+	}
+	return SaveManager.write_slot(slot, data)
+
+
+## 从存档恢复对局。
+func restore_game(data: Dictionary) -> void:
+	wave_index = int(data.get("wave_index", -1))
+	frost = float(data.get("frost", FROST_START))
+	ice_crystals = int(data.get("ice_crystals", 0))
+	kill_count = int(data.get("kill_count", 0))
+	total_kills = int(data.get("total_kills", 0))
+	var saved_modifiers: Dictionary = data.get("modifiers", {})
+	for key in saved_modifiers.keys():
+		if _upgrade_manager.modifiers.has(key):
+			_upgrade_manager.modifiers[key] = saved_modifiers[key]
+	_upgrade_manager.stacks = (data.get("stacks", {}) as Dictionary).duplicate(true)
+	for raw_structure in data.get("structures", []):
+		_restore_structure(raw_structure)
+	var hero_data: Dictionary = data.get("hero", {})
+	if is_instance_valid(_hero):
+		var saved_position: Array = hero_data.get("position", [])
+		if saved_position.size() == 2:
+			_hero.global_position = Vector2(float(saved_position[0]), float(saved_position[1]))
+		_hero.update_modifiers(_upgrade_manager.modifiers)
+		_hero.current_hp = clampf(float(hero_data.get("hp", _hero.get_max_hp())), 1.0, _hero.get_max_hp())
+	phase = Phase.PREP
+	_status_text = "存档已读取，防线恢复完毕。空格或按钮开始下一波。"
+	_refresh_hud()
+
+
+## 恢复单座建筑：与建造流程一致，但不消耗冻气。
+func _restore_structure(raw: Dictionary) -> bool:
+	var build_id := str(raw.get("id", ""))
+	var definition := BuildCatalog.get_definition(build_id)
+	if definition.is_empty():
+		return false
+	var anchor_values: Array = raw.get("anchor", [])
+	if anchor_values.size() != 2:
+		return false
+	var anchor := Vector2i(int(anchor_values[0]), int(anchor_values[1]))
+	var footprint := _get_footprint_cells(build_id, anchor)
+	for footprint_cell in footprint:
+		if _structure_cells.has(footprint_cell):
+			var occupant = _structure_cells[footprint_cell]
+			if is_instance_valid(occupant):
+				return false
+			_structure_cells.erase(footprint_cell)
+		if not map_view.is_buildable(footprint_cell):
+			return false
+	var structure: DefenseStructure
+	if BuildCatalog.is_tower(build_id):
+		structure = TowerScript.new()
+		towers.add_child(structure)
+	else:
+		structure = BarracksScript.new()
+		barracks_container.add_child(structure)
+	structure.global_position = map_view.to_global(
+		map_view.cell_position_to_local(_get_footprint_center(build_id, anchor))
+	)
+	structure.setup(self, definition)
+	structure.level = clampi(int(raw.get("level", 1)), 1, 3)
+	structure.destroyed.connect(_on_structure_destroyed)
+	_sync_structure_modifiers(structure)
+	structure.current_hp = clampf(float(raw.get("hp", structure.max_hp)), 1.0, structure.max_hp)
+	structure.queue_redraw()
+	for footprint_cell in footprint:
+		_structure_cells[footprint_cell] = structure
+	return true
+
+
+## 由占地格反推锚点：兵营锚点即最小格，防御塔锚点为占地中心。
+func _get_structure_anchor(structure: DefenseStructure) -> Vector2i:
+	var found := false
+	var min_x := 0
+	var min_y := 0
+	for cell in _structure_cells.keys():
+		if _structure_cells[cell] != structure:
+			continue
+		if not found:
+			min_x = cell.x
+			min_y = cell.y
+			found = true
+		else:
+			min_x = mini(min_x, cell.x)
+			min_y = mini(min_y, cell.y)
+	if not found:
+		return map_view.world_to_cell(structure.global_position)
+	if BuildCatalog.is_tower(str(structure.definition.get("id", ""))):
+		return Vector2i(min_x + 1, min_y + 1)
+	return Vector2i(min_x, min_y)
+
+
+func _autosave() -> void:
+	if SessionScript.current_slot >= 0:
+		save_game(SessionScript.current_slot)
 
 
 func _notify_tutorial(event_id: String) -> void:
@@ -840,6 +1048,12 @@ func _sync_structure_modifiers(structure: DefenseStructure) -> void:
 
 func _get_build_cost(definition: Dictionary) -> int:
 	return int(round(float(definition.get("cost", 0)) * float(_upgrade_manager.modifiers.get("build_cost_multiplier", 1.0))))
+
+
+func _clear_current_slot_save() -> void:
+	if SessionScript.current_slot >= 0:
+		SaveManager.delete_slot(SessionScript.current_slot)
+		SessionScript.current_slot = -1
 
 
 func _get_wave_frost_reward(index: int) -> int:
@@ -898,6 +1112,7 @@ func _refresh_hud() -> void:
 
 
 func _finish_victory() -> void:
+	_clear_current_slot_save()
 	_pending_wave_finished_index = -1
 	phase = Phase.FINISHED
 	_stop_combat_simulation()
@@ -907,6 +1122,7 @@ func _finish_victory() -> void:
 
 
 func _finish_defeat() -> void:
+	_clear_current_slot_save()
 	phase = Phase.FINISHED
 	_stop_combat_simulation()
 	_status_text = "琪露诺倒下了，IQ 被妖精们偷光了。"

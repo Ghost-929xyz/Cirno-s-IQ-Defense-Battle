@@ -126,6 +126,12 @@ func _destroy_structure() -> void:
 	queue_free()
 
 
+## 玩家右键主动拆除：与被击毁走同一清理链路，但不算战损。
+func demolish() -> void:
+	destroyed.emit(self)
+	queue_free()
+
+
 func _draw_health_bar(extra_y: float = -10.0, width: float = 10.0) -> void:
 	if current_hp >= max_hp and not selected and not hovered:
 		return
