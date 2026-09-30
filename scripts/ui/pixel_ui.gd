@@ -138,6 +138,30 @@ static func apply_button_theme(button: Button) -> void:
 	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.add_theme_stylebox_override("disabled", button_disabled())
 
+static func attach_button_sound_feedback(button: Button) -> void:
+	if button.has_meta("ui_sound_feedback_attached"):
+		return
+	button.set_meta("ui_sound_feedback_attached", true)
+	button.mouse_entered.connect(func() -> void:
+		if button.disabled:
+			return
+		var manager := _get_ui_sound_manager()
+		if manager != null:
+			manager.call("play_hover")
+	)
+	button.pressed.connect(func() -> void:
+		var manager := _get_ui_sound_manager()
+		if manager != null:
+			manager.call("play_select")
+	)
+
+
+static func _get_ui_sound_manager() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return null
+	return tree.root.get_node_or_null("UISoundManager")
+
 # ---------------------------------------------------------------- 菜单选项悬浮特效
 
 const MENU_TEXT_NORMAL := Color("#2f6b96")
@@ -149,8 +173,8 @@ static var _underline_texture: ImageTexture = null
 static var _crystal_texture: ImageTexture = null
 
 
-## 无边框菜单选项样式：深蓝文字，悬浮/聚焦时文本高亮并微微上浮膨胀，
-## 文字下方浮现亮冰蓝渐变下划线，左侧出现柔光冰晶。
+## 无边框菜单选项样式：悬浮/聚焦时文字变亮右移，雪花与渐变线同步淡入。
+## 雪花尺寸跟随字号，在文字左侧垂直居中，线条从雪花纹样左缘开始。
 ## button 需已确定 position / size；host 为 button 的父节点（须在场景树内）。
 static func attach_menu_option_fx(button: Button, host: Control, base_position: Vector2, dark_background := false) -> void:
 	var empty := StyleBoxEmpty.new()
@@ -162,62 +186,72 @@ static func attach_menu_option_fx(button: Button, host: Control, base_position: 
 	button.add_theme_color_override("font_focus_color", MENU_TEXT_HOVER)
 	button.add_theme_color_override("font_disabled_color", MENU_TEXT_DISABLED)
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	attach_button_sound_feedback(button)
 
 	var font_size: int = button.get_theme_font_size("font_size")
 	var underline_width := clampf(float(button.text.length()) * float(font_size) * 1.05 + 16.0, 80.0, 260.0)
+	var text_width := button.get_theme_font("font").get_string_size(button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var text_left := 0.0
+	if button.alignment == HORIZONTAL_ALIGNMENT_CENTER:
+		text_left = floorf((button.size.x - text_width) * 0.5)
+	elif button.alignment == HORIZONTAL_ALIGNMENT_RIGHT:
+		text_left = button.size.x - text_width
+	var snow_size := float(font_size)
+	var selected_text_shift := 10.0
+	# 按选中后的文字位置计量，雪花可见右缘与首字相隔半个字符。
+	var snow_left := base_position.x + text_left + selected_text_shift - snow_size * 0.5 - snow_size * 0.81
+	var line_center_y := base_position.y + button.size.y - 4.0
+	# 40px 雪花纹理外围有柔光留白，实体纹样左缘约位于 19%。
+	var line_left := snow_left + snow_size * 0.19
 	var underline := TextureRect.new()
-	underline.texture = _get_underline_texture()
-	underline.position = base_position + Vector2(2.0, button.size.y - 7.0)
-	underline.size = Vector2(underline_width, 6.0)
 	underline.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	underline.texture = _get_underline_texture()
+	underline.position = Vector2(line_left, line_center_y - 3.0)
+	underline.size = Vector2(base_position.x + text_left + underline_width - line_left, 6.0)
 	underline.stretch_mode = TextureRect.STRETCH_SCALE
 	underline.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	underline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	host.add_child(underline)
 
 	var crystal := TextureRect.new()
-	crystal.texture = _get_crystal_texture()
-	crystal.position = base_position + Vector2(-44.0, 4.0)
-	crystal.size = Vector2(40.0, 40.0)
 	crystal.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	crystal.texture = _get_crystal_texture()
+	crystal.position = Vector2(snow_left, base_position.y + (button.size.y - snow_size) * 0.5)
+	crystal.size = Vector2(snow_size, snow_size)
 	crystal.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	crystal.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	crystal.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crystal.pivot_offset = crystal.size * 0.5
-	crystal.scale = Vector2(0.7, 0.7)
 	host.add_child(crystal)
 
-	button.pivot_offset = Vector2(0.0, button.size.y * 0.5)
-
-	var state := {"tween": null}
-	var animate := func(hovering: bool) -> void:
+	var state := {"tween": null, "hovered": false, "focused": false}
+	var animate := func() -> void:
 		var old_tween: Tween = state["tween"]
 		if old_tween != null and old_tween.is_valid():
 			old_tween.kill()
 		var tween := host.create_tween().set_parallel(true)
 		state["tween"] = tween
-		var target_scale := Vector2(1.07, 1.07) if hovering else Vector2.ONE
-		var target_y := base_position.y - 3.0 if hovering else base_position.y
-		var indicator_alpha := 1.0 if hovering else 0.0
-		tween.tween_property(button, "scale", target_scale, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		tween.tween_property(button, "position:y", target_y, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		tween.tween_property(underline, "modulate:a", indicator_alpha, 0.16)
-		tween.tween_property(crystal, "modulate:a", indicator_alpha, 0.16)
-		tween.tween_property(crystal, "scale", Vector2.ONE if hovering else Vector2(0.7, 0.7), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var active: bool = not button.disabled and (state["hovered"] or state["focused"])
+		var indicator_alpha := 1.0 if active else 0.0
+		var target_x := base_position.x + selected_text_shift if active else base_position.x
+		tween.tween_property(button, "position:x", target_x, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tween.tween_property(underline, "modulate:a", indicator_alpha, 0.18).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(crystal, "modulate:a", indicator_alpha, 0.18).set_trans(Tween.TRANS_SINE)
 
 	button.mouse_entered.connect(func() -> void:
-		if not button.disabled:
-			animate.call(true)
+		state["hovered"] = true
+		animate.call()
 	)
 	button.mouse_exited.connect(func() -> void:
-		animate.call(false)
+		state["hovered"] = false
+		animate.call()
 	)
 	button.focus_entered.connect(func() -> void:
-		if not button.disabled:
-			animate.call(true)
+		state["focused"] = true
+		animate.call()
 	)
 	button.focus_exited.connect(func() -> void:
-		animate.call(false)
+		state["focused"] = false
+		animate.call()
 	)
 
 

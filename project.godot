@@ -14,11 +14,18 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="琪露诺的智商保卫战"
-config/description="雾之湖第一关塔防 Roguelike 原型"
+config/name="东方冰华战线：冰封幻想乡"
+config/description="基地建设、军团指挥与冰霜魔法的即时战略远征"
+; Keep the existing save directory when changing the displayed project name.
+config/use_custom_user_dir=true
+config/custom_user_dir_name="Godot/app_userdata/琪露诺的智商保卫战"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/art/icon_placeholder.svg"
+
+[autoload]
+
+UISoundManager="*res://scripts/autoload/ui_sound_manager.gd"
 
 [display]
 

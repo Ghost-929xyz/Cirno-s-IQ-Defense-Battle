@@ -61,8 +61,9 @@ static func get_slot_summary(slot: int) -> Dictionary:
 	if data.is_empty():
 		return {}
 	return {
-		"wave": int(data.get("wave_index", -1)) + 1,
-		"frost": int(data.get("frost", 0.0)),
-		"structures": (data.get("structures", []) as Array).size(),
+		"mode": str(data.get("mode", "legacy")),
+		"wave": int(data.get("wave", 0)) if data.get("mode") == "rts" else int(data.get("wave_index", -1)) + 1,
+		"frost": int(data.get("gold", 0.0)) if data.get("mode") == "rts" else int(data.get("frost", 0.0)),
+		"structures": (data.get("buildings", []) as Array).filter(func(b): return b.get("team") == 0).size() if data.get("mode") == "rts" else (data.get("structures", []) as Array).size(),
 		"saved_at": str(data.get("saved_at", "")),
 	}

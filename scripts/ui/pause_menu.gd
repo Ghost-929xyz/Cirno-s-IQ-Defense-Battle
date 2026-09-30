@@ -196,5 +196,6 @@ func _make_panel_button(text: String, font_size: int) -> Button:
 	button.text = text
 	button.add_theme_font_size_override("font_size", font_size)
 	PixelUITheme.apply_button_theme(button)
+	PixelUITheme.attach_button_sound_feedback(button)
 	button.add_theme_color_override("font_color", Color("#e8fcff"))
 	return button
