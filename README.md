@@ -21,7 +21,11 @@ Godot 4 基地与军团即时战略原型。默认新游戏已按《玩法&机�
 | BAKA 魔法 | Q 冰冻、W 冰墙、E 冰桥，再点击目标区域 |
 | 其他 | Esc 取消放置/清空选择；P 暂停；Space 提前迎敌；F5 存档 |
 
-默认准备 75 秒，共 6 波，之后清剿敌军、野怪及敌方建筑。主基地提供 40 容量，额外完工建筑各加 20。训练队列也占容量。程序图形用于占位，正式美术需求已另列。
+默认准备 75 秒，共 6 波，之后清剿敌军、野怪及敌方建筑。主基地提供 40 容量，额外完工建筑各加 20。训练队列也占容量。战场已接入 Tiny Swords 地形、角色动画和建筑贴图；缺少骑乘等专用素材的兵种暂用现有角色加职业字标。
+
+## 瓦片地图与角色
+
+在 Godot 打开 `scenes/maps/fog_lake_tiles.tscn` 可直接绘制地图，瓦片集位于 `resources/tilesets/tiny_swords.tres`。地图包含水面、岸线、草地、道路、木桥、装饰，以及动态冰桥和冰墙；修改地面与木桥会影响通行判定。详见 [Tiny Swords 接入说明](docs/TINY_SWORDS_INTEGRATION.md)。
 
 ## 文档
 
@@ -39,15 +43,16 @@ Godot 4 基地与军团即时战略原型。默认新游戏已按《玩法&机�
 python tools/import_rts_balance.py 'C:/Users/Xuyize/Downloads/数值_初版.xlsx'
 ```
 
-导入器需要 `openpyxl`。运行游戏只依赖已导出的 JSON，无需 Python。`rts_simulation.gd` 负责规则和存档，`expedition.gd` 负责 UI、指挥操作和占位绘制；旧版系统保留以兼容历史存档。
+导入器需要 `openpyxl`。运行游戏只依赖已导出的 JSON，无需 Python。`rts_simulation.gd` 负责规则和存档，`expedition.gd` 负责 UI 和指挥操作，`tiny_swords_map.gd` 负责瓦片与精灵表现；旧版系统保留以兼容历史存档。
 
 ## 验证
 
 ```powershell
 godot --headless --path . --script tests/rts_test.gd
+godot --headless --path . --script tests/tiny_swords_test.gd
 godot --path . --script tests/rts_visual_test.gd
 ```
 
-规则测试当前结果：`RTS_TEST checks=77 failures=0`。真实渲染测试输出 `RTS_VISUAL_OK`，截图位于被 Git 忽略的 `.tools/`。覆盖开局流程、原表数值、容量、训练、施工修复、驻军火力、狙击、兵种技能、战功、地形寻路、存档往返、完整波次长跑和胜负保留。旧版回归 `BUG_REGRESSION_OK checks=50`，菜单与原有引导检查通过。
+规则测试当前结果：`RTS_TEST checks=77 failures=0`，瓦片和动画检查 `TINY_SWORDS_TEST checks=45 failures=0`。真实渲染测试输出 `RTS_VISUAL_OK`，截图位于被 Git 忽略的 `.tools/`。覆盖开局流程、原表数值、容量、训练、施工修复、驻军火力、狙击、兵种技能、战功、地形寻路、存档往返、完整波次长跑和胜负保留。旧版回归 `BUG_REGRESSION_OK checks=50`，菜单与原有引导检查通过。
 
 旧版回归仍可使用 `tests/bug_regression_test.gd`。本轮尚未完成长期难度与经济平衡调优。

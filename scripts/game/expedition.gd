@@ -6,6 +6,7 @@ const Session = preload("res://scripts/autoload/session.gd")
 const Saves = preload("res://scripts/autoload/save_manager.gd")
 const UI = preload("res://scripts/ui/pixel_ui.gd")
 const FONT = preload("res://assets/fonts/unifont.otf")
+const Art = preload("res://scripts/data/tiny_swords_art.gd")
 const CELL := 21.0
 const ORIGIN := Vector2(22, 89)
 const MAP_RECT := Rect2(22, 89, 840, 525)
@@ -36,8 +37,10 @@ var train_buttons: Dictionary = {}
 var tech_button: Button
 var tier_button: Button
 var wave_button: Button
+@onready var tile_map: Node2D = $Battlefield/FogLakeTileMap
 
 func _ready() -> void:
+	sim.configure_terrain(tile_map.terrain_water_cells())
 	build_ui()
 	if Session.pending_load_slot >= 0:
 		var slot: int = Session.pending_load_slot
@@ -47,6 +50,7 @@ func _ready() -> void:
 	last_phase = sim.phase
 	show_phase_overlay()
 	refresh_ui()
+	tile_map.sync(sim, 0.0, paused)
 
 func _process(delta: float) -> void:
 	if not paused:
@@ -67,6 +71,7 @@ func _process(delta: float) -> void:
 	if autosave_clock >= 20 and sim.active():
 		autosave_clock = 0
 		save_progress(false)
+	tile_map.sync(sim, delta, paused or not sim.active())
 	queue_redraw()
 
 func screen_point(entity: Dictionary) -> Vector2:
@@ -139,6 +144,9 @@ func build_ui() -> void:
 		var d: Dictionary = sim.catalog[kind]
 		var b := button_at(roster, "%s · %d 金 / %d 容量" % [d.name, d.cost, d.capacity], Vector2.ZERO, Vector2(248, 32), train.bind(kind))
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.icon = Art.portrait(kind)
+		b.expand_icon = true
+		b.add_theme_constant_override("icon_max_width", 24)
 		b.tooltip_text = "%s\n生命 %d | 攻击 %d | 射程 %s\n攻速 %s 次/秒 | 移速 %s 格/秒\n暴击 %.0f%% ×%.1f | 科技 %d / 层级 %d\n%s" % [d.name, d.hp, d.attack, str(d.range), str(d.attack_speed), str(d.move_speed), d.crit_chance * 100, d.crit_multiplier, d.tech, d.tier, d.skill]
 		train_buttons[kind] = b
 	label_at(side, "选择单位后建造", Vector2(14, 280), Vector2(260, 20), 15)
@@ -292,11 +300,11 @@ func select_area(start: Vector2, end: Vector2) -> void:
 	if start.distance_to(end) < 7:
 		var pos := map_point(end)
 		for u in sim.living(0):
-			if u.home == -1 and sim.point(u).distance_to(pos) < 0.7:
+			if u.home == -1 and (sim.point(u) + Vector2(0, -0.4)).distance_to(pos) < 0.85:
 				selected.append(u.id)
 				return
 		for b in sim.buildings:
-			if sim.point(b).distance_to(pos) < 1.3:
+			if building_hit(b, pos):
 				selected_building = int(b.id)
 				return
 	else:
@@ -306,51 +314,48 @@ func select_area(start: Vector2, end: Vector2) -> void:
 func contextual_order(pos: Vector2) -> void:
 	if not sim.active(): return
 	for u in sim.units:
-		if u.team != 0 and u.hp > 0 and u.home == -1 and sim.point(u).distance_to(pos) < 0.8:
+		if u.team != 0 and u.hp > 0 and u.home == -1 and (sim.point(u) + Vector2(0, -0.4)).distance_to(pos) < 0.85:
 			sim.command(selected, "attack", pos, int(u.id))
 			return
+	# Small rewards can sit beside a tall house. Hit them before the building's
+	# larger interaction footprint, otherwise the island reward cannot be clicked.
+	for c in sim.chests:
+		if (sim.point(c) + Vector2(0, -0.2)).distance_to(pos) < 0.8:
+			sim.command(selected, "chest", pos, int(c.id))
+			return
 	for b in sim.buildings:
-		if sim.point(b).distance_to(pos) < 1.4:
+		if building_hit(b, pos):
 			var order := "garrison"
 			if b.team == 1: order = "attack"
 			elif b.team == 0 and b.hp < b.max_hp: order = "repair"
 			sim.command(selected, order, pos, int(b.id))
 			return
-	for c in sim.chests:
-		if sim.point(c).distance_to(pos) < 1:
-			sim.command(selected, "chest", pos, int(c.id))
-			return
 	sim.command(selected, "move", pos)
 
+func building_hit(building: Dictionary, pos: Vector2) -> bool:
+	if sim.point(building).distance_to(pos) < 1.3: return true
+	var view: Sprite2D = tile_map.building_views.get(int(building.id))
+	if not is_instance_valid(view): return false
+	var screen := ORIGIN + (pos + Vector2(0.5, 0.5)) * CELL
+	var local_point := view.to_local(screen)
+	return view.get_rect().has_point(local_point) and view.is_pixel_opaque(local_point)
+
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(1180, 660)), Color("091923"))
-	for y in Simulation.HEIGHT:
-		for x in Simulation.WIDTH:
-			var color := Color("254749") if (x + y) % 2 == 0 else Color("26494a")
-			if x < 2 or y == 0 or y == 24: color = Color("1b383e")
-			if y in [6, 7, 18, 19]: color = Color("516465")
-			if sim.water(Vector2i(x, y)): color = Color("18425f")
-			if sim.bridges.has([x, y]): color = Color("8acbd9")
-			draw_rect(Rect2(ORIGIN + Vector2(x, y) * CELL, Vector2.ONE * CELL), color)
-	for y in [3, 10, 15, 22]:
-		for x in [2, 8, 24, 32, 38]:
-			var pos := ORIGIN + Vector2(x, y) * CELL
-			draw_line(pos + Vector2(0, 7), pos + Vector2(0, -7), Color("15343a"), 3)
-			draw_circle(pos - Vector2(0, 7), 7, Color("345c59"))
-	for wall in sim.walls:
-		var p := screen_point(wall)
-		draw_rect(Rect2(p - Vector2(9, 10), Vector2(18, 20)), BLUE)
-		draw_line(p - Vector2(5, 8), p + Vector2(5, 8), Color.WHITE, 2)
 	for c in sim.chests:
 		var p := screen_point(c)
-		draw_rect(Rect2(p - Vector2(8, 6), Vector2(16, 12)), Color("896145"))
-		draw_rect(Rect2(p - Vector2(8, 6), Vector2(16, 12)), GOLD, false, 2)
-		draw_line(p + Vector2(0, -6), p + Vector2(0, 6), GOLD, 3)
+		draw_arc(p, 10, 0, TAU, 20, Color(1, 0.88, 0.42, 0.65), 1)
 	for b in sim.buildings: draw_building(b)
 	for u in sim.units:
 		if u.home == -1: draw_unit(u)
 	for s in sim.shots:
-		draw_line(screen_point(s), ORIGIN + (Vector2(s.tx, s.ty) + Vector2(0.5, 0.5)) * CELL, BLUE if s.team == 0 else RED, 1.5)
+		var start := screen_point(s) + Vector2(0, -13)
+		var finish := ORIGIN + (Vector2(s.tx, s.ty) + Vector2(0.5, 0.5)) * CELL + Vector2(0, -10)
+		if s.get("ranged", false):
+			var arrow := Art.texture("Factions/Knights/Troops/Archer/Arrow/Arrow.png")
+			var position_on_line := start.lerp(finish, 1.0 - float(s.ttl) / 0.15)
+			draw_set_transform(position_on_line, (finish - start).angle(), Vector2.ONE * 0.33)
+			draw_texture(arrow, -arrow.get_size() / 2.0)
+			draw_set_transform(Vector2.ZERO)
 	if sim.phase == "base":
 		for i in Simulation.BASE_SITES.size():
 			var pos: Vector2 = ORIGIN + (Simulation.BASE_SITES[i] + Vector2(0.5, 0.5)) * CELL
@@ -371,46 +376,27 @@ func team_color(team: int) -> Color:
 func draw_building(b: Dictionary) -> void:
 	var pos := screen_point(b)
 	var color := team_color(int(b.team))
-	var size := Vector2(37, 31) if b.kind == "base" else Vector2(28, 25)
-	draw_ellipse_shadow(pos, 23)
-	draw_rect(Rect2(pos - size / 2, size), Color("29414c"))
-	draw_rect(Rect2(pos - size / 2, size), color, false, 2)
-	draw_colored_polygon(PackedVector2Array([pos + Vector2(-size.x / 2 - 3, -size.y / 2), pos + Vector2(0, -size.y), pos + Vector2(size.x / 2 + 3, -size.y / 2)]), color.darkened(0.25))
-	draw_rect(Rect2(pos + Vector2(-4, 1), Vector2(8, size.y / 2 - 1)), color.darkened(0.35))
-	if b.kind == "well": draw_circle(pos + Vector2(0, -10), 6, BLUE)
-	if b.kind in ["barracks", "outpost"]:
-		draw_line(pos + Vector2(13, -18), pos + Vector2(13, -39), color, 2)
-		draw_rect(Rect2(pos + Vector2(13, -39), Vector2(12, 7)), color)
-	if selected_building == b.id: draw_arc(pos, 28, 0, TAU, 32, GOLD, 2)
-	health_bar(pos + Vector2(-21, 20), 42, float(b.hp) / float(b.max_hp), color)
+	if selected_building == b.id: draw_arc(pos, 24, 0, TAU, 32, GOLD, 2)
+	health_bar(pos + Vector2(-21, 7), 42, float(b.hp) / float(b.max_hp), color)
 	var text := str(Rules.BUILDINGS[b.kind].name)
 	if not b.complete: text = "建造 %.0f%%" % (b.hp / b.max_hp * 100)
 	var count := sim.occupants(int(b.id)).size()
 	if count > 0: text += " [%d]" % count
-	draw_string(FONT, pos + Vector2(-27, 40), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
+	draw_string(FONT, pos + Vector2(-27, 23), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("142c35"))
+	draw_string(FONT, pos + Vector2(-28, 22), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
 
 func draw_unit(u: Dictionary) -> void:
 	var pos := screen_point(u)
 	var color := team_color(int(u.team))
-	draw_ellipse_shadow(pos, 8)
 	if selected.has(u.id): draw_arc(pos + Vector2(0, 3), 10, 0, TAU, 20, GOLD, 1.5)
-	if int(sim.catalog[u.kind].tech) == 2 and u.kind in ["cavalry", "ranger", "lancer", "scout", "cataphract"]:
-		draw_rect(Rect2(pos + Vector2(-8, -1), Vector2(16, 8)), color.darkened(0.35))
-		draw_line(pos + Vector2(-5, 4), pos + Vector2(-5, 9), color, 2)
-		draw_line(pos + Vector2(5, 4), pos + Vector2(5, 9), color, 2)
-	draw_rect(Rect2(pos + Vector2(-4, -6), Vector2(8, 10)), color.darkened(0.18))
-	draw_circle(pos + Vector2(0, -9), 4, color)
-	if sim.catalog[u.kind].ranged:
-		draw_arc(pos + Vector2(5, -3), 6, -PI / 2, PI / 2, 8, GOLD, 1)
-	else: draw_line(pos + Vector2(5, 1), pos + Vector2(8, -10), Color("e1eef0"), 2)
 	if u.frozen > 0: draw_circle(pos, 11, Color(0.5, 0.9, 1, 0.4))
-	if u.rank > 0: draw_string(FONT, pos + Vector2(-4, -23), "II" if u.rank == 2 else "I", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, GOLD)
-	health_bar(pos + Vector2(-8, 12), 16, float(u.hp) / float(u.max_hp), color)
-
-func draw_ellipse_shadow(pos: Vector2, radius: float) -> void:
-	draw_set_transform(pos + Vector2(0, 5), 0, Vector2(1, 0.35))
-	draw_circle(Vector2.ZERO, radius, Color(0, 0, 0, 0.2))
-	draw_set_transform(Vector2.ZERO)
+	if u.rank > 0: draw_string(FONT, pos + Vector2(-4, -33), "II" if u.rank == 2 else "I", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, GOLD)
+	if u.kind not in ["swordsman", "archer"] and u.team != 2:
+		var badge := str(sim.catalog[u.kind].name).left(1)
+		if u.kind == "cataphract": badge = "骑"
+		draw_rect(Rect2(pos + Vector2(8, -24), Vector2(14, 14)), Color("193847"))
+		draw_string(FONT, pos + Vector2(9, -12), badge, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
+	health_bar(pos + Vector2(-9, 7), 18, float(u.hp) / float(u.max_hp), color)
 
 func health_bar(pos: Vector2, width: float, ratio: float, color: Color) -> void:
 	draw_rect(Rect2(pos, Vector2(width, 3)), Color("10222c"))

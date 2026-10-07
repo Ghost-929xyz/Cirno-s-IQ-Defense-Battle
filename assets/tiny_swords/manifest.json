@@ -1,0 +1,258 @@
+{
+  "pack": "Tiny Swords (Update 010)",
+  "source": "User supplied local asset pack",
+  "unmodified_pngs": [
+    {
+      "path": "Deco/01.png",
+      "sha256": "aae1d14745a5886b3217498f3ad1f8c0a82f3f1dc644ac2efd25c3f36f90eae7"
+    },
+    {
+      "path": "Deco/02.png",
+      "sha256": "7adc58201b1db819ff18957eeacf044f4551beb5be09725587d8293cc2876d5a"
+    },
+    {
+      "path": "Deco/03.png",
+      "sha256": "5afe95e862aaa047064a1b189f19d97cf10363db4d4953218d4c4e8a44ee3838"
+    },
+    {
+      "path": "Deco/04.png",
+      "sha256": "e4a6132577721eb8837cc23fe5e25644c4d866da24c5e663fce58d86f4638f53"
+    },
+    {
+      "path": "Deco/05.png",
+      "sha256": "f51cf8d4647febc196a4b5e7afc80badaf50c76bf6309e548e11ffb1898ecb79"
+    },
+    {
+      "path": "Deco/06.png",
+      "sha256": "edc4335ad52060a562b21fef868c64576d33b96a6a97ac5ba1448b6fb0a939c1"
+    },
+    {
+      "path": "Deco/07.png",
+      "sha256": "fae1719e2b2de9bd708598cdd2a0d0a5ca09aa88630dc6b52a80957f6a465d31"
+    },
+    {
+      "path": "Deco/08.png",
+      "sha256": "f94b5fa5aac1b62b58d9389c5524bebd0d99a4193749e41a505642bde965a6a8"
+    },
+    {
+      "path": "Deco/09.png",
+      "sha256": "fa07501a73b22ae6d96297dfc5d8dad81791afe8751b8a40fb6ced4dfe45c3d5"
+    },
+    {
+      "path": "Deco/10.png",
+      "sha256": "68f57683bc1f512d34fc0107c6b4fb33904a3298295df09f3a2d4a05e977821b"
+    },
+    {
+      "path": "Deco/11.png",
+      "sha256": "26a7592cbc3ac76b63a871cd40261c45728eca9c520a39000f1f2cdc5bfda7fd"
+    },
+    {
+      "path": "Deco/12.png",
+      "sha256": "54d6fce705950699ae4752df20e9a0019571c155ad13f4f7bee2eb558f0eb233"
+    },
+    {
+      "path": "Deco/13.png",
+      "sha256": "9a7ef9a9695aba24dd43d3bbf97e7f0c67b10f61e3bba8ebf69ba2aefe5628d5"
+    },
+    {
+      "path": "Deco/14.png",
+      "sha256": "4515949922edc5533e07e60cf6b7212028e96aba3f5dcff89f2db9ea24a720c1"
+    },
+    {
+      "path": "Deco/15.png",
+      "sha256": "d09c7ef588b00cdbdc9e6d5239a6cb45804828410f4c50019f92a11f6472f376"
+    },
+    {
+      "path": "Deco/16.png",
+      "sha256": "bbf9170c41a2bd10f4e10942407f9c90c3a4f338f5fe454a4cc7fa0b287fafef"
+    },
+    {
+      "path": "Deco/17.png",
+      "sha256": "c3da63203ae56798b0188fc09c376bdb7ea6de74a8c1930c4ec6f7d02b5881ac"
+    },
+    {
+      "path": "Deco/18.png",
+      "sha256": "8ef2e9479438091df9622dd4aa4f943b2454916fadc7975cfa1f39d30231eb68"
+    },
+    {
+      "path": "Effects/Explosion/Explosions.png",
+      "sha256": "fa3bcfbf05c3c1cef0e5f06976e2431c24c4ad05cdd71d7242e0b436f4e5ec8e"
+    },
+    {
+      "path": "Factions/Goblins/Buildings/Wood_House/Goblin_House.png",
+      "sha256": "5e25c872df37f63e4432230e9c5d762b4de2f34956799d1127cce1963f60e1a9"
+    },
+    {
+      "path": "Factions/Goblins/Buildings/Wood_House/Goblin_House_Destroyed.png",
+      "sha256": "75998fbb9dff099c55410bf1cd3a7e0eeb61b0d309942beccdf56a5a756b7c62"
+    },
+    {
+      "path": "Factions/Goblins/Troops/Torch/Blue/Torch_Blue.png",
+      "sha256": "8be105dfb696767a447402258eeb1d8a95ee89b444fce83a003e7b654933f448"
+    },
+    {
+      "path": "Factions/Goblins/Troops/Torch/Red/Torch_Red.png",
+      "sha256": "0612b50e25f5b5fe97600693ceca88be5244a54049cce9eb5f7a8ded437f00a6"
+    },
+    {
+      "path": "Factions/Goblins/Troops/Torch/Yellow/Torch_Yellow.png",
+      "sha256": "5d57fa095feb61270cf84bfbd5d3fb3bc6493be9bef7dda4a7ea233803d33768"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Castle/Castle_Blue.png",
+      "sha256": "616cfeec6287ede0b368a14332afc9ac34462dee5bb3f5a8f7595464c8b2ca53"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Castle/Castle_Construction.png",
+      "sha256": "3850894fa86cfd08fe94834d9da764c7ff426ae6e17ccf2c6295224225d76def"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Castle/Castle_Destroyed.png",
+      "sha256": "bdfb6452c3e16bd22ad4d36d8808063f124dadb8c00c84376e425d6f62f0027e"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Castle/Castle_Red.png",
+      "sha256": "b64221f532aa3f6ec1074a5e0f36e9c3337a370f62ce366d6872535d7940b771"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Castle/Castle_Yellow.png",
+      "sha256": "f9bdf2a7a396ac3ff55241302405ed3c67f5ffbf2ef542e770dfb9e86f5113d6"
+    },
+    {
+      "path": "Factions/Knights/Buildings/House/House_Blue.png",
+      "sha256": "9020e35116ffde6d22a8c854d7117d94e99e19bd582c3c3855ece449d7d2af6d"
+    },
+    {
+      "path": "Factions/Knights/Buildings/House/House_Construction.png",
+      "sha256": "0718972905f8fdb47e1db7b80ccc6be4cc73f4d62e273cebafce09ff46990c69"
+    },
+    {
+      "path": "Factions/Knights/Buildings/House/House_Destroyed.png",
+      "sha256": "f7a1baca074726848449ca78d437e236ea989121c61aac413b74e6f3896e7441"
+    },
+    {
+      "path": "Factions/Knights/Buildings/House/House_Red.png",
+      "sha256": "27f027830c1b5499d99075e87c1ea5f5c26bf49ecfd6ada758ceb5da2d7b058e"
+    },
+    {
+      "path": "Factions/Knights/Buildings/House/House_Yellow.png",
+      "sha256": "2aa6fd3259755fdc2cb2cf856920dab098aa6d8493e9277b11685f4689aec4b8"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Tower/Tower_Blue.png",
+      "sha256": "2d39450c366fc1ebc0e5a290a860dcf21ebd7d4a22d16eb5cca23e6d4de94ca9"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Tower/Tower_Construction.png",
+      "sha256": "e4975c74fcf9874b5298ced752f79dca4c116c4f8a2a22784e0b8985ee81c905"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Tower/Tower_Destroyed.png",
+      "sha256": "e92d9ac401698e22171fd054ddcd9ce2f2b41cb5ad171e2a18c92ab511245a70"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Tower/Tower_Red.png",
+      "sha256": "bec8cffab0b56b42345c754132b9ab911ae02b9f59d5413b91a1cdf41296083a"
+    },
+    {
+      "path": "Factions/Knights/Buildings/Tower/Tower_Yellow.png",
+      "sha256": "5b216a1cb209482bbcfd8793669f283621147ae96e6ff45532629ffc27b25fff"
+    },
+    {
+      "path": "Factions/Knights/Troops/Archer/Arrow/Arrow.png",
+      "sha256": "ba35a379a56693fe997a30d7ed6a49add03f10876d98abf5a89889f08ba9af74"
+    },
+    {
+      "path": "Factions/Knights/Troops/Archer/Blue/Archer_Blue.png",
+      "sha256": "0a2e1efff6d653d32777b99ca01f9018fbf27080f2aff645f0fafde175e8b7ec"
+    },
+    {
+      "path": "Factions/Knights/Troops/Archer/Red/Archer_Red.png",
+      "sha256": "daa79d0f957dea7355b6ff5c6210e833779bd7ef40c32c1943f03b9aaa12a26d"
+    },
+    {
+      "path": "Factions/Knights/Troops/Archer/Yellow/Archer_Yellow.png",
+      "sha256": "104159e53f3ee28903b3b0b91ea31229f101fbe6842a28a0fdd6eaa2e5afcc4f"
+    },
+    {
+      "path": "Factions/Knights/Troops/Dead/Dead.png",
+      "sha256": "2b621f86ef18fd92e4c4cc1718cc091fe62e2334d8ea54632eed7cb2995ef1fe"
+    },
+    {
+      "path": "Factions/Knights/Troops/Pawn/Blue/Pawn_Blue.png",
+      "sha256": "38c47fc4766fa1fad73c188e5c6a1f2d2257aebc9dfdd5b37f1c8dad913e8cfe"
+    },
+    {
+      "path": "Factions/Knights/Troops/Pawn/Red/Pawn_Red.png",
+      "sha256": "0d207ad590425917b71d3dc538b88d6765e76c90aa24ed5ff80c0ad842738705"
+    },
+    {
+      "path": "Factions/Knights/Troops/Pawn/Yellow/Pawn_Yellow.png",
+      "sha256": "22cbf2126c68f61a3a359d0d19d45f8fdaa24700d2b9492c9b17f03977405d1f"
+    },
+    {
+      "path": "Factions/Knights/Troops/Warrior/Blue/Warrior_Blue.png",
+      "sha256": "593a40da14b136374d55044fd3ba3ac11e621d645be9c75a2a6032741ab24c80"
+    },
+    {
+      "path": "Factions/Knights/Troops/Warrior/Red/Warrior_Red.png",
+      "sha256": "a1f67ed61134a20df6211e1e9fff1c33e9964512fddf4ccdb3c1673752b9bc14"
+    },
+    {
+      "path": "Factions/Knights/Troops/Warrior/Yellow/Warrior_Yellow.png",
+      "sha256": "85902914cb921cc7c6eb728eb9c1d34a710ce8e4a66ae8d537e5fcc64ca54e64"
+    },
+    {
+      "path": "Resources/Resources/G_Idle.png",
+      "sha256": "ee9a2018e179b95839105d0b6d39725f22ae57e28d73532421fb1994c4b4de78"
+    },
+    {
+      "path": "Resources/Resources/G_Spawn.png",
+      "sha256": "c631caee640977312839cf533c5c48b20011ae826b2b64f8c1c1cd39a5e7d277"
+    },
+    {
+      "path": "Resources/Trees/Tree.png",
+      "sha256": "63a1ae03991621528eab44d0840a75a923583a7bbb999311de27799ab21b4d3e"
+    },
+    {
+      "path": "Terrain/Bridge/Bridge_All.png",
+      "sha256": "816de342b39f03eeb97bc5d8837ece9d9fcc1936110207158b3ba01a1db3c95f"
+    },
+    {
+      "path": "Terrain/Ground/Shadows.png",
+      "sha256": "e6b60e7445c67f3d42f50113353e3065e790168550dd07e7e0b54b9f2a4d9eb8"
+    },
+    {
+      "path": "Terrain/Ground/Tilemap_Elevation.png",
+      "sha256": "dab562d922d81e4de500dc9e2cb480e35825e6202728b2a0825714b8885daee1"
+    },
+    {
+      "path": "Terrain/Ground/Tilemap_Flat.png",
+      "sha256": "683b4ebc6dff10d2bf6e2bd34c24d732defdc65abcb0f5b9f509655aff8bec56"
+    },
+    {
+      "path": "Terrain/Water/Foam/Foam.png",
+      "sha256": "eaeaab4c2211ce5babac0da55d3da096eb68ead4137a1fa060cbd93aece995c9"
+    },
+    {
+      "path": "Terrain/Water/Rocks/Rocks_01.png",
+      "sha256": "56a85a84754200c9db1b20ff7f56ac20b9a65076ebdb4b60c468e38babaf66a5"
+    },
+    {
+      "path": "Terrain/Water/Rocks/Rocks_02.png",
+      "sha256": "02b5dea7d26c1b9ad5e4dcbfb952888255b466f201f38402f33075c5292a3445"
+    },
+    {
+      "path": "Terrain/Water/Rocks/Rocks_03.png",
+      "sha256": "cb407bf96983b55356074d3de9164e1e1e8d0803bcf7f8536eaf505c0852fef0"
+    },
+    {
+      "path": "Terrain/Water/Rocks/Rocks_04.png",
+      "sha256": "7c3d7f8db1d18fe516081174b0043156d43d06e2d5c1e209218ec86949ee9216"
+    },
+    {
+      "path": "Terrain/Water/Water.png",
+      "sha256": "5ef30a00bbff22590eabb5acabb8aca6cc415557e7ab5f60db07714f01a4dba1"
+    }
+  ]
+}

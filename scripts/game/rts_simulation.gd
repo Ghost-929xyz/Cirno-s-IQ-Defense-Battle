@@ -26,6 +26,8 @@ var message := "选择两张效果牌，随后选择基地位置。"
 var rng := RandomNumberGenerator.new()
 var navigation := AStarGrid2D.new()
 var navigation_revision := 0
+var _painted_water: Dictionary = {}
+var _use_painted_terrain := false
 
 func _init() -> void:
 	rng.randomize()
@@ -43,10 +45,17 @@ func set_point(entity: Dictionary, pos: Vector2) -> void:
 	entity.y = pos.y
 
 func water(cell: Vector2i) -> bool:
+	if _use_painted_terrain: return _painted_water.has(cell)
 	var river := cell.x in [19, 20, 21] and cell.y not in [6, 7, 18, 19]
 	var island_moat := ((cell.x in [25, 29] and cell.y >= 9 and cell.y <= 15)
 		or (cell.y in [9, 15] and cell.x >= 25 and cell.x <= 29))
 	return river or island_moat
+
+func configure_terrain(water_cells: Array[Vector2i]) -> void:
+	_painted_water.clear()
+	for cell in water_cells: _painted_water[cell] = true
+	_use_painted_terrain = true
+	rebuild_navigation()
 
 func inside(cell: Vector2i) -> bool:
 	return Rect2i(0, 0, WIDTH, HEIGHT).has_point(cell)
@@ -507,7 +516,7 @@ func hit(attacker: Dictionary, target: Dictionary, amount: float, ranged: bool) 
 			amount *= float(defense.ranged_damage_modifier)
 	if rng.randf() < float(d.crit_chance): amount *= float(d.crit_multiplier)
 	target.hp = maxf(0, target.hp - amount)
-	shots.append({"x": attacker.x, "y": attacker.y, "tx": target.x, "ty": target.y, "ttl": 0.15, "team": attacker.team})
+	shots.append({"x": attacker.x, "y": attacker.y, "tx": target.x, "ty": target.y, "ttl": 0.15, "team": attacker.team, "attacker_id": attacker.id, "ranged": ranged})
 	if target.has("home") and attacker.kind in ["ice_archer", "ice_archer_plus"]:
 		target.slow = 0.3 if attacker.kind == "ice_archer_plus" else 0.2
 		target.slow_time = 3.0

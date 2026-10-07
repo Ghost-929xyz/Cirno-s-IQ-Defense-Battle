@@ -27,7 +27,7 @@ func run() -> void:
 	scene.sim.start_wave()
 	await create_timer(3.0).timeout
 	scene.paused = true
-	await process_frame
+	await create_timer(0.2).timeout
 	root.get_texture().get_image().save_png("res://.tools/rts-battle.png")
 	print("RTS_VISUAL_OK")
 	quit()
