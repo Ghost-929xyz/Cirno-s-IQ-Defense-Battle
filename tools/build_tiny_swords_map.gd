@@ -2,6 +2,7 @@ extends SceneTree
 ## Rebuild the editable TileSet and TileMapLayer scene from the original atlas.
 const Art = preload("res://scripts/data/tiny_swords_art.gd")
 const Simulation = preload("res://scripts/game/rts_simulation.gd")
+const Battlefield = preload("res://scripts/data/rts_battlefield.gd")
 const SIZE := 64
 var tiles := TileSet.new()
 var map := Node2D.new()
@@ -120,17 +121,15 @@ func build() -> void:
 	layer("IceWalls", 7)
 	var sim := Simulation.new()
 	var land_cells: Dictionary = {}
-	var path_cells: Dictionary = {}
+	var path_cells: Dictionary = Battlefield.road_cells()
 	for y in Simulation.HEIGHT:
 		for x in Simulation.WIDTH:
 			var cell := Vector2i(x, y)
 			water.set_cell(cell, 0, Vector2i.ZERO)
-			if not sim.water(cell) and x not in [19, 20, 21]: land_cells[cell] = true
-			if y in [6, 7, 18, 19] and x not in [19, 20, 21]: path_cells[cell] = true
+			if not sim.water(cell) and not Battlefield.crossing(cell): land_cells[cell] = true
+			if Battlefield.crossing(cell): crossings.set_cell(cell, 3, Vector2i(x - Battlefield.river_center(y) + 1, 0))
 	for cell in land_cells: grass.set_cell(cell, 1, nine_patch(cell, land_cells))
 	for cell in path_cells: paths.set_cell(cell, 1, nine_patch(cell, path_cells) + Vector2i(5, 0))
-	for y in [6, 7, 18, 19]:
-		for x in [19, 20, 21]: crossings.set_cell(Vector2i(x, y), 3, Vector2i(x - 19, 0))
 	# The opaque center of the foam sheet belongs UNDER land, with only its
 	# outer ripples exposed over water. Centering on water creates white squares.
 	for cell in land_cells:
@@ -139,10 +138,25 @@ func build() -> void:
 			if sim.inside(neighbor) and not land_cells.has(neighbor) and crossings.get_cell_source_id(neighbor) == -1:
 				shoreline.set_cell(cell, 4, Vector2i.ZERO)
 				break
-	for cell in [Vector2i(2, 4), Vector2i(2, 11), Vector2i(2, 18), Vector2i(8, 23), Vector2i(12, 3), Vector2i(14, 10), Vector2i(16, 23), Vector2i(23, 3), Vector2i(31, 9), Vector2i(37, 12), Vector2i(37, 18), Vector2i(33, 24)]:
-		decor.set_cell(cell, 5, Vector2i.ZERO)
+	var landmarks: Array = Battlefield.BASE_SITES + Battlefield.HOUSES + Battlefield.CAMPS + Battlefield.CHESTS
+	var tree_cells: Array[Vector2i] = []
 	for cell in land_cells:
-		if not path_cells.has(cell) and (cell.x * 17 + cell.y * 31) % 43 == 0 and decor.get_cell_source_id(cell) == -1:
+		if path_cells.has(cell): continue
+		var clear := true
+		for site in landmarks:
+			if Vector2(cell).distance_to(site) < 3.2: clear = false
+		if not clear: continue
+		# Deterministic groves flank roads while landmark clearings stay readable.
+		var grove: bool = (cell.x < 17 or cell.x > 61 or cell.y < 7 or cell.y > 44)
+		var plant_tree: bool = grove and (cell.x * 73 + cell.y * 97 + cell.x * cell.y * 3) % 13 == 0
+		for planted in tree_cells:
+			if Vector2(cell).distance_to(Vector2(planted)) < 2.5: plant_tree = false
+		for offset in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			if path_cells.has(cell + offset): plant_tree = false
+		if plant_tree:
+			decor.set_cell(cell, 5, Vector2i.ZERO)
+			tree_cells.append(cell)
+		elif (cell.x * 17 + cell.y * 31) % 19 == 0:
 			decor.set_cell(cell, [11, 15, 20, 22, 25][(cell.x + cell.y) % 5], Vector2i.ZERO)
 	var actors := Node2D.new()
 	actors.name = "Actors"
@@ -154,5 +168,5 @@ func build() -> void:
 	packed.pack(map)
 	error = ResourceSaver.save(packed, "res://scenes/maps/fog_lake_tiles.tscn")
 	map.free()
-	print("TINY_MAP_BUILT tiles=", 40 * 25, " result=", error)
+	print("TINY_MAP_BUILT tiles=", Simulation.WIDTH * Simulation.HEIGHT, " result=", error)
 	quit(0 if error == OK else 1)

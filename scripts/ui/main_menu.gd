@@ -348,7 +348,7 @@ func _show_expedition_help() -> void:
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style())
 	_options_overlay.add_child(panel)
 	_make_label(panel, "冰华远征操作说明", Vector2(30, 20), Vector2(700, 36), 25, Color("#edfdff"))
-	_make_label(panel, "开局选两张效果牌，再点击一个基地位置。\n\n左键单选或框选部队，A 全选；右键移动、攻击、驻军或寻宝。\n右键受损的己方建筑修复；选单位后点击建造按钮，再选空地。\n右侧训练列表可滚动，科技与层级解锁高级兵种。\n\nQ 冰冻、W 冰墙、E 冰桥，再点击目标；Esc 取消。\nP 暂停，Space 提前迎敌，F5 保存。\n\n守完六波后，消灭敌军、野怪和敌方建筑即可获胜。\n胜利保留军团与建筑，可继续下一场远征。", Vector2(30, 75), Vector2(700, 290), 17, Color("#c3e9f3"))
+	_make_label(panel, "开局随机抽两张效果牌，再点击一个基地位置。\n\n左键单选或框选部队，A 全选；右键移动、攻击、驻军或寻宝。\n选单位后 G 驻军、R 修复，再点击建筑；受损建筑也可驻军。\n选单位后展开建造菜单，选择设施，再点击陆地空位。\n底部展开招募、建造或科技；招募按四类兵种筛选。\n\nQ 冰冻、W 冰墙、E 冰桥，再点击目标；Esc 取消。\n滚轮缩放，中键/方向键平移，小地图定位，Tab 俯瞰，H 回基地。\nP 暂停，Space 提前迎敌，F5 保存。\n\n守完六波后，消灭敌军与敌方建筑即可获胜；打野、寻宝可选。\n部队全部阵亡即失败，驻军算存活部队。\n胜利保留军团与建筑，可继续下一场远征。", Vector2(30, 75), Vector2(700, 290), 17, Color("#c3e9f3"))
 	var back := _make_panel_button("返回", 16)
 	back.position = Vector2(310, 376)
 	back.size = Vector2(140, 42)

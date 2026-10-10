@@ -15,6 +15,16 @@ const FREEZE_COST := 20.0
 const BRIDGE_COST := 20.0
 const WALL_SECONDS := 25.0
 const FREEZE_SECONDS := 4.0
+const WILDLIFE_BAKA := 15.0
+const WILDLIFE_KILL_VALUE_RATIO := 1.5
+const WILDLIFE_HEAL_RATIO := 0.25
+## Cells/second: deliberate battle pacing, independent of source workbook units.
+const MOVE_SPEEDS := {
+	"swordsman": 1.9, "guard": 1.8, "paladin": 1.8, "heavy_infantry": 1.6,
+	"archer": 1.8, "sniper": 1.7, "ice_archer": 1.8, "sniper_plus": 1.7, "ice_archer_plus": 1.8,
+	"cavalry": 2.5, "ranger": 2.8, "lancer": 2.4, "scout": 2.8, "cataphract": 2.2,
+	"assassin": 2.3, "hermit": 2.2, "berserker": 2.1, "hermit_dodge": 2.2, "hermit_blink": 2.2, "berserker_plus": 2.1,
+}
 const BUILDINGS := {
 	"base": {"name": "主基地", "hp": 2000.0, "cost": 0, "beds": 20, "fire": 8},
 	"barracks": {"name": "兵营", "hp": 1000.0, "cost": 160, "beds": 10, "fire": 5},
@@ -34,5 +44,7 @@ static func catalog() -> Dictionary:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://resources/rts/units.json"))
 	var result: Dictionary = {}
 	for unit in data.units:
+		unit["source_move_speed"] = unit.move_speed
+		unit.move_speed = MOVE_SPEEDS[unit.id]
 		result[unit.id] = unit
 	return result

@@ -84,8 +84,8 @@ func run() -> void:
 	s.step_unit(veteran, 1)
 	check(is_equal_approx(veteran.hp, 55.07), "Veteran 3 percent passive heal")
 	s = fresh()
-	check(not s.walkable(Vector2i(20, 12)), "Water blocks traversal")
-	check(s.cast("bridge", Vector2(20, 12)) and s.walkable(Vector2i(20, 12)), "Ice bridge changes navigation")
+	check(not s.walkable(Vector2i(42, 12)), "Water blocks traversal")
+	check(s.cast("bridge", Vector2(42, 12)) and s.walkable(Vector2i(42, 12)), "Ice bridge changes navigation")
 	var old_baka: float = s.baka
 	check(not s.cast("bridge", Vector2(4, 4)) and s.baka == old_baka, "Invalid cast is not charged")
 	check(s.cast("wall", Vector2(10, 12)) and not s.walkable(Vector2i(10, 12)), "Ice wall blocks path")
@@ -101,10 +101,10 @@ func run() -> void:
 	check(restored.restore(json_data), "JSON save restores")
 	check(restored.used_capacity() == s.used_capacity() and restored.baka == s.baka and restored.bridges == s.bridges, "Resources and terrain round trip")
 	check(not restored.restore({"wave_index": 2}), "Legacy save rejected without mutation")
-	check(restored.walkable(Vector2i(20, 12)), "Restored ice bridge is traversable")
+	check(restored.walkable(Vector2i(42, 12)), "Restored ice bridge is traversable")
 	s = fresh()
-	check(s.navigation.get_id_path(Vector2i(24, 12), Vector2i(27, 12)).is_empty(), "Island initially inaccessible")
-	check(s.cast("bridge", Vector2(25, 12)) and not s.navigation.get_id_path(Vector2i(24, 12), Vector2i(27, 12)).is_empty(), "Ice bridge unlocks island exploration")
+	check(s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "Island initially inaccessible")
+	check(s.cast("bridge", Vector2(51, 25)) and not s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "Ice bridge unlocks island exploration")
 	# Pure garrison fire must cap at 5 and 8 initial archers, regardless of occupancy.
 	s.units.clear()
 	s.buildings.clear()
@@ -189,6 +189,9 @@ func run() -> void:
 	s = fresh()
 	s.buildings[0].hp = 1000000000.0
 	s.buildings[0].max_hp = 1000000000.0
+	for ally in s.living(0):
+		ally.hp = 1000000000.0
+		ally.max_hp = 1000000000.0
 	for i in 2100: s.step(0.2)
 	check(s.wave == Rules.WAVE_COUNT and s.phase == "cleanup", "Full timed campaign reaches cleanup")
 	var restored_campaign = Sim.new()
@@ -207,7 +210,7 @@ func run() -> void:
 	scene.pick_card("mana")
 	scene.sim.choose_base(0)
 	scene.select_all()
-	scene.contextual_order(Vector2(10, 3))
+	scene.contextual_order(Vector2(14, 6))
 	check(scene.sim.living(0)[0].order == "chest", "Right-click dispatches chest order")
 	scene.sim.start_wave()
 	for i in 200: scene.sim.step(0.05)

@@ -19,7 +19,7 @@ func run() -> void:
 	await process_frame
 	var map = game.tile_map
 	check(map.get_node("Ground") is TileMapLayer, "Real editable TileMapLayer ground")
-	check(map.water.get_used_cells().size() == 1000, "Full map water base")
+	check(map.water.get_used_cells().size() == 4000, "Full map water base")
 	check(map.ground.tile_set.resource_path == "res://resources/tilesets/tiny_swords.tres", "Saved reusable TileSet")
 	check(map.ground.tile_set.get_terrains_count(0) == 2, "Grass and sand terrain painting sets")
 	var original = Sim.new()
@@ -28,7 +28,7 @@ func run() -> void:
 		for x in Sim.WIDTH:
 			if original.water(Vector2i(x, y)) != game.sim.water(Vector2i(x, y)): matching = false
 	check(matching, "All painted cells match the existing gameplay layout")
-	check(map.crossings.get_used_cells().size() == 12 and game.sim.walkable(Vector2i(20, 6)), "Wooden bridges preserve crossing routes")
+	check(map.crossings.get_used_cells().size() == 18 and game.sim.walkable(Vector2i(42, 10)), "Wooden bridges preserve crossing routes")
 	var foam_on_land := true
 	for cell in map.get_node("ShoreFoam").get_used_cells():
 		if map.ground.get_cell_source_id(cell) == -1: foam_on_land = false
@@ -40,7 +40,7 @@ func run() -> void:
 	check(map.unit_views.size() == game.sim.units.size(), "Every unit has an animated view")
 	check(map.building_views.size() == game.sim.buildings.size(), "Every building has a texture")
 	game.select_all()
-	game.contextual_order(Vector2(27, 12))
+	game.contextual_order(Vector2(54, 25))
 	check(game.sim.living(0)[0].order == "chest", "Island reward beside a building remains clickable")
 	var u: Dictionary = game.sim.living(0)[0]
 	var view = map.unit_views[int(u.id)]
@@ -63,10 +63,10 @@ func run() -> void:
 	game.sim.evacuate(base.id)
 	map.sync(game.sim, 0.05, false)
 	check(view.visible, "Evacuating restores field sprite")
-	check(game.sim.cast("bridge", Vector2(20, 12)), "Bridge spell succeeds")
+	check(game.sim.cast("bridge", Vector2(42, 12)), "Bridge spell succeeds")
 	map.sync(game.sim, 0.05, false)
-	check(map.ice.get_cell_source_id(Vector2i(20, 12)) == 30 and game.sim.walkable(Vector2i(20, 12)), "Ice tiles and traversability update together")
-	check(map.ice.get_cell_tile_data(Vector2i(20, 12)).get_custom_data("walkable"), "Ice tile has correct editor metadata")
+	check(map.ice.get_cell_source_id(Vector2i(42, 12)) == 30 and game.sim.walkable(Vector2i(42, 12)), "Ice tiles and traversability update together")
+	check(map.ice.get_cell_tile_data(Vector2i(42, 12)).get_custom_data("walkable"), "Ice tile has correct editor metadata")
 	check(game.sim.cast("wall", Vector2(10, 12)), "Wall spell succeeds")
 	map.sync(game.sim, 0.05, false)
 	check(map.ice_walls.get_cell_source_id(Vector2i(10, 12)) == 31 and not game.sim.walkable(Vector2i(10, 12)), "Wall tile blocks the same logical cell")
@@ -79,7 +79,7 @@ func run() -> void:
 	map.sync(game.sim, 0.05, false)
 	game.sim.restore(saved)
 	map.sync(game.sim, 0.05, false)
-	check(map.ice.get_cell_source_id(Vector2i(20, 12)) == 30, "Loading restores frozen terrain visuals")
+	check(map.ice.get_cell_source_id(Vector2i(42, 12)) == 30, "Loading restores frozen terrain visuals")
 	# Editor changes are consumed by gameplay, not merely painted on top.
 	map.ground.erase_cell(Vector2i(3, 3))
 	game.sim.configure_terrain(map.terrain_water_cells())

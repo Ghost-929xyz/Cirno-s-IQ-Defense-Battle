@@ -1,20 +1,20 @@
 # Tiny Swords 瓦片地图与角色接入
 
-本轮使用用户提供的 Tiny Swords Update 010，将远征战场的地形、角色和建筑替换为瓦片与精灵素材。游戏仍从主菜单进入 `scenes/expedition.tscn`，玩法、数值、存档和操作沿用原有远征版本。
+本轮使用用户提供的 Tiny Swords Update 010，将远征战场的地形、角色和建筑替换为瓦片与精灵素材。游戏仍从主菜单进入 `scenes/expedition.tscn`，2026-10-10 已扩展地图并调整移速与指挥界面，见 [扩展战场说明](EXPANDED_BATTLEFIELD.md)。
 
 ## 可编辑地图
 
 在 Godot 打开 `scenes/maps/fog_lake_tiles.tscn`，即可查看和编辑原生 `TileMapLayer`。瓦片集保存在 `resources/tilesets/tiny_swords.tres`，包含草地与沙地两种 Terrain Painting 地形，以及 `terrain`、`walkable` 自定义数据。
 
-地图为 40×25 格，素材瓦片为 64×64 像素。战斗界面缩放到 840×525，每格显示 21 像素。不要将素材像素坐标与逻辑格坐标混用。`Battlefield` 容器裁切边缘，避免树木和角色跨出战场覆盖 HUD。
+地图为 80×50 格，素材瓦片为 64×64 像素。战场视野为 1180×660，默认每格显示 21 像素，支持滚轮缩放和视野移动。不要将素材像素坐标与逻辑格坐标混用。HUD 悬浮于战场上；右下角圆形地图可用 Tab 展开为俯瞰地图。
 
 | 层 | 内容 | 编辑说明 |
 | --- | --- | --- |
-| Water | 1000 格水底 | 保持完整铺底 |
+| Water | 4000 格水底 | 保持完整铺底 |
 | ShoreFoam | 8 帧循环岸边浪花 | 放在岸边陆地下方，中心白色块由 Ground 遮住 |
 | Ground | 草地、岸线和岛屿 | 使用 Terrain Painting 绘制；移除地面即可露出水面 |
-| Paths | 南北两条沙土地面道路 | 只改变外观；水上通道使用 Crossings |
-| Crossings | 两处木桥 | 木桥覆盖格可通行 |
+| Paths | 北、中、南三路与纵向支路 | 只改变外观；水上通道使用 Crossings |
+| Crossings | 三处木桥 | 木桥覆盖格可通行 |
 | Decorations | 树木、石头、草丛、蘑菇 | 树木循环动画；装饰暂不阻路 |
 | Ice | 冰桥 | 运行时从冻结的水面格生成 |
 | IceWalls | 冰墙 | 运行时生成，失效后移除 |
@@ -22,7 +22,7 @@
 
 启动时，有水底、没有 Ground、也没有 Crossings 的格子作为水域交给 AStarGrid2D。魔法在同一套格坐标中更新寻路和动态瓦片。编辑 Ground 或 Crossings 会实际改变通行情况。固定基地候选点、敌营、房屋与奖励点仍由玩法数据放置，编辑地图时需为这些点保留陆地。
 
-两处木桥、东西岸与湖岛的可达关系保持原规则，湖岛在施放冰桥前没有陆地路径。道路和装饰不额外阻挡单位，建筑仍采用点位与距离交互。
+三处木桥分别连接两岸，湖泊形成绕行与分岔，湖岛在施放冰桥前没有陆地路径。道路和装饰不额外阻挡单位，建筑仍采用点位与距离交互。
 
 ## 素材映射
 
@@ -74,6 +74,6 @@ godot --headless --path . --script tests/rts_test.gd
 godot --path . --script tests/rts_visual_test.gd
 ```
 
-结果为 `TINY_SWORDS_TEST checks=45 failures=0`、`RTS_TEST checks=77 failures=0` 与 `RTS_VISUAL_OK`。覆盖可编辑 TileMapLayer、1000 格与原规则一致性、桥梁通行、魔法与路径联动、读档恢复、全部图集区域边界、角色动作/朝向/暂停/驻军，以及 20 个兵种头像映射。截图检查了岸线、建筑脚点、地图裁切和界面图标。
+结果为 `TINY_SWORDS_TEST checks=45 failures=0`、`RTS_TEST checks=77 failures=0` 与 `RTS_VISUAL_OK`。覆盖可编辑 TileMapLayer、4000 格与扩展地图拓扑一致性、桥梁通行、魔法与路径联动、读档恢复、全部图集区域边界、角色动作/朝向/暂停/驻军，以及 20 个兵种头像映射。截图检查了岸线、建筑脚点、地图裁切和界面图标。
 
 下一批独立美术主要缺骑乘、高级职业、专用冰系、魔力井和宝箱。长期正式美术目标见 [美术清单](ART_REQUIREMENTS_RTS.md)，当前临时素材覆盖范围以本页为准。
