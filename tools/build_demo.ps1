@@ -13,6 +13,7 @@ foreach ($folder in @('assets','resources','scenes','scripts')) {
 $config = Get-Content (Join-Path $root 'project.godot') -Raw
 $config = $config -replace '(?m)^MCPRuntimeServer=.*\r?\n','' -replace '(?m)^_mcp_game_helper=.*\r?\n',''
 $config = $config -replace '(?m)^enabled=PackedStringArray\(.*\)','enabled=PackedStringArray()'
+$config = $config -replace '(?m)^config/custom_user_dir_name=.*', 'config/custom_user_dir_name="Godot/app_userdata/Icefront-Demo"'
 Set-Content (Join-Path $stage 'project.godot') $config -Encoding utf8
 Copy-Item (Join-Path $root 'export_presets.cfg') $stage
 & $Godot --headless --path $stage --editor --import --log-file (Join-Path $root '.tools/demo-import.log') | Out-Host
@@ -21,4 +22,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Import failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Export failed' }
 Copy-Item (Join-Path $root 'docs/DEMO_README.txt') (Join-Path $out '试玩说明.txt')
 Compress-Archive -Path $out -DestinationPath (Join-Path $root 'exports/Icefront-Demo-Windows.zip') -Force
+
 

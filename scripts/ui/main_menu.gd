@@ -83,6 +83,11 @@ func _build_ui() -> void:
 	_hero = hero
 	_hero_base_position = hero.position
 	_front_particles = _add_particle_layer("ParticlesFront", PARTICLES_FRONT, 0.9)
+	# Restore falling snow above the artwork and below menu controls.
+	var snow := get_node_or_null("GPUParticles2D") as GPUParticles2D
+	if snow != null:
+		snow.preprocess = snow.lifetime
+		move_child(snow, get_child_count() - 1)
 	_build_title_block()
 
 	# 左侧竖排无边框菜单选项。
@@ -468,3 +473,4 @@ func _make_label(
 	label.add_theme_color_override("font_color", color)
 	parent.add_child(label)
 	return label
+
