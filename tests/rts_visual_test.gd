@@ -15,11 +15,14 @@ func run() -> void:
 	root.add_child(scene)
 	await create_timer(0.6).timeout
 	root.get_texture().get_image().save_png("res://.tools/rts-cards.png")
-	scene.draw_opening_cards()
+	scene.pick_card("supplies")
+	scene.pick_card("mana")
+	scene.confirm_opening_cards()
 	await create_timer(0.2).timeout
 	root.get_texture().get_image().save_png("res://.tools/rts-base.png")
 	scene.sim.choose_base(1)
 	scene.sim.gold = 1800
+	scene.select_all()
 	scene.select_all()
 	scene.sim.construct("barracks", Vector2(13, 25), scene.selected)
 	scene.sim.cast("bridge", Vector2(42, 12))

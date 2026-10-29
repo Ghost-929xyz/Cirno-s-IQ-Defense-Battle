@@ -22,6 +22,7 @@ func fresh():
 	return s
 
 func run() -> void:
+	test_training_spacing_and_placement()
 	var s = Sim.new()
 	check(s.catalog.size() == 20, "All spreadsheet rows imported")
 	check(s.catalog.cataphract.hp == 450 and s.catalog.hermit_dodge.dodge == 0.4, "Exact spreadsheet values")
@@ -29,16 +30,17 @@ func run() -> void:
 	check(s.choose_card("supplies") and not s.choose_card("supplies"), "Distinct opening cards")
 	check(s.choose_card("mana") and not s.choose_card("builders"), "Exactly two opening cards")
 	check(s.gold == 1150 and s.baka == 150, "Opening card effects")
-	check(s.choose_base(1) and s.capacity() == 40 and s.used_capacity() == 7, "Base capacity and starting army")
+	check(s.phase == "prep" and s.point(s.buildings[0]) == Vector2(40, 25) and s.capacity() == 40 and s.used_capacity() == 7, "Automatic central base capacity and starting army")
 	s.gold = 10000
 	check(not s.train_unit("cataphract"), "Tech and tier gate")
-	check(s.research("tech") and s.research("tier") and s.research("tier"), "Tech tree unlock")
+	s.add_building("academy", 0, Vector2(13, 25))
+	check(s.research_unit("lancer") and s.research_unit("cataphract"), "Research follows the selected cavalry branch")
 	check(s.train_unit("cataphract"), "Unlocked unit training")
 	check(s.used_capacity() == 13, "Queued capacity reservation")
 	var base: Dictionary = s.buildings[0]
 	s.step_building(base, Rules.TRAIN_SECONDS)
 	check(s.living(0).size() == 4 and s.used_capacity() == 13, "Training converts reservation to unit")
-	for i in 9: s.add_unit("archer", 0, Vector2(5, 12))
+	for i in 16: s.add_unit("archer", 0, Vector2(5, 12))
 	check(not s.train_unit("swordsman"), "Capacity cap enforced")
 	s = fresh()
 	s.gold = 1000
@@ -77,12 +79,12 @@ func run() -> void:
 	s.credit_kill(veteran, 240)
 	check(veteran.rank == 0, "Threshold is strictly greater than three times price")
 	s.credit_kill(veteran, 1)
-	check(veteran.rank == 1 and is_equal_approx(veteran.max_hp, 130) and is_equal_approx(veteran.attack, 39), "First promotion 30 percent")
+	check(veteran.rank == 1 and is_equal_approx(veteran.max_hp, 100) and is_equal_approx(veteran.attack, 36), "First promotion increases only damage by 20 percent")
 	s.credit_kill(veteran, 241)
-	check(veteran.rank == 2 and is_equal_approx(veteran.max_hp, 169), "Second promotion compounds")
+	check(veteran.rank == 2 and is_equal_approx(veteran.max_hp, 120) and is_equal_approx(veteran.attack, 36), "Second promotion increases only maximum health by 20 percent")
 	veteran.hp = 50
 	s.step_unit(veteran, 1)
-	check(is_equal_approx(veteran.hp, 55.07), "Veteran 3 percent passive heal")
+	check(is_equal_approx(veteran.hp, 52.4), "Veteran 2 percent passive heal")
 	s = fresh()
 	check(not s.walkable(Vector2i(42, 12)), "Water blocks traversal")
 	check(s.cast("bridge", Vector2(42, 12)) and s.walkable(Vector2i(42, 12)), "Ice bridge changes navigation")
@@ -118,6 +120,7 @@ func run() -> void:
 	enemy = s.add_unit("swordsman", 1, Vector2(7, 5))
 	enemy.hp = 2000.0
 	enemy.max_hp = 2000.0
+	s.update_visibility()
 	s.step_building(house, 0.1)
 	check(enemy.hp == 1800, "House fire capped at five archers")
 	house.kind = "base"
@@ -146,11 +149,14 @@ func run() -> void:
 	s.step_unit(healer, 1)
 	check(ice.hp == 53, "Paladin aura restores 3 HP per second")
 	var heavy: Dictionary = s.add_unit("cataphract", 0, Vector2(7, 6))
+	s.update_visibility()
 	s.step_unit(heavy, 0.1)
 	check(enemy.frozen == 1.0 and heavy.special == 10.0, "Cataphract stuns with 10-second cooldown")
 	var blink: Dictionary = s.add_unit("hermit_blink", 0, Vector2(9, 5))
+	s.command([blink.id], "attack", s.point(enemy), enemy.id)
+	s.update_visibility()
 	s.step_unit(blink, 0.1)
-	check(blink.special == 10 and s.point(blink) == s.point(enemy), "Hermit blink closes two-cell gap")
+	check(blink.special == 10 and s.unit_position_clear(s.point(blink), blink.kind, blink.id), "Hermit blink lands beside the target without overlapping")
 	var hermit: Dictionary = s.add_unit("hermit", 1, Vector2(13, 5))
 	s.units = [ice, hermit]
 	check(s.nearest_target(ice, 10, false).is_empty(), "Hermit reduces ranged detection by 40 percent")
@@ -165,7 +171,7 @@ func run() -> void:
 	worker.hp = 50
 	var reward_gold: float = s.gold
 	s.open_chest(chest, worker)
-	check(s.gold == reward_gold + 180 and worker.rank == 1 and worker.hp > 65, "Chest grants currency, advancement and healing effect")
+	check(s.gold == reward_gold + 180 and worker.rank == 1 and worker.hp >= 75, "Chest grants currency, advancement and healing effect")
 	s.open_chest(chest, worker)
 	check(s.gold == reward_gold + 180, "Chest cannot be collected twice")
 	s = fresh()
@@ -208,8 +214,12 @@ func run() -> void:
 	check(scene.train_buttons.size() == 20, "Scene creates all unit controls")
 	scene.pick_card("supplies")
 	scene.pick_card("mana")
+	scene.confirm_opening_cards()
 	scene.sim.choose_base(0)
 	scene.select_all()
+	scene.select_all()
+	scene.sim.set_point(scene.sim.living(0)[0], Vector2(15, 6))
+	scene.sim.update_visibility()
 	scene.contextual_order(Vector2(14, 6))
 	check(scene.sim.living(0)[0].order == "chest", "Right-click dispatches chest order")
 	scene.sim.start_wave()
@@ -220,3 +230,41 @@ func run() -> void:
 	await process_frame
 	print("RTS_TEST checks=%d failures=%d" % [checks, failures])
 	quit(1 if failures else 0)
+
+func test_training_spacing_and_placement() -> void:
+	var s = fresh()
+	s.gold = 10000
+	var base: Dictionary = s.buildings[0]
+	var worker: Dictionary = s.living(0)[0]
+	var before_preview := JSON.stringify(s.snapshot())
+	check(s.construction_error("barracks", Vector2(13.2, 25.1), [worker.id]).is_empty(), "Preview accepts a valid snapped building cell")
+	check(not s.construction_error("barracks", s.point(base), [worker.id]).is_empty(), "Preview rejects building proximity")
+	check(not s.construction_error("house", Vector2.ZERO, [worker.id]).is_empty(), "Preview rejects water")
+	check(not s.construction_error("well", Vector2(13, 25), []).is_empty(), "Preview requires an eligible builder")
+	check(JSON.stringify(s.snapshot()) == before_preview, "Preview queries leave the simulation unchanged")
+	for i in 5: check(s.train_unit("swordsman", base.id), "Queue five reinforcements")
+	for i in 5:
+		s.step_building(base, Rules.TRAIN_SECONDS)
+		var spawned: Dictionary = s.units.back()
+		check(s.walkable(Vector2i(s.point(spawned))), "Trained unit spawns on walkable terrain")
+		for u in s.units:
+			if u.id == spawned.id or u.hp <= 0 or u.home != -1: continue
+			check(s.point(u).distance_to(s.point(spawned)) >= 1.25, "Trained units keep clearance from existing units")
+		for b in s.buildings:
+			check(s.point(b).distance_to(s.point(spawned)) >= 1.5, "Trained units spawn outside buildings")
+	# A tiny enclosed exit must wait instead of stacking units or spawning
+	# across an impassable wall; freeing it releases the completed recruit.
+	s = Sim.new()
+	s.phase = "prep"
+	s.gold = 10000
+	base = s.add_building("base", 0, Vector2(8, 25))
+	for y in s.HEIGHT:
+		for x in s.WIDTH: s.navigation.set_point_solid(Vector2i(x, y), true)
+	for x in range(8, 11): s.navigation.set_point_solid(Vector2i(x, 25), false)
+	var blocker: Dictionary = s.add_unit("archer", 0, Vector2(10, 25))
+	check(s.train_unit("swordsman", base.id), "Queue recruit at enclosed producer")
+	s.step_building(base, Rules.TRAIN_SECONDS)
+	check(base.queue.size() == 1 and s.units.size() == 1, "Blocked exit retains completed recruit in queue")
+	blocker.home = base.id
+	s.step_building(base, 0.1)
+	check(base.queue.is_empty() and s.units.size() == 2 and s.point(s.units.back()) == Vector2(10, 25), "Cleared exit releases recruit without stacking")

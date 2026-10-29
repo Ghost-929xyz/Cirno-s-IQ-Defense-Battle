@@ -93,6 +93,8 @@ func build() -> void:
 	tree.set_tile_animation_frames_count(Vector2i.ZERO, 4)
 	tree.set_tile_animation_speed(Vector2i.ZERO, 5)
 	tree.get_tile_data(Vector2i.ZERO, 0).texture_origin = Vector2i(0, -64)
+	tree.get_tile_data(Vector2i.ZERO, 0).set_custom_data("terrain", "tree")
+	tree.get_tile_data(Vector2i.ZERO, 0).set_custom_data("walkable", false)
 	for i in [1, 5, 10, 12, 15]:
 		var source := atlas(10 + i, "Deco/%02d.png" % i, Vector2i(64, 64), "decoration", true)
 		if source.get_tiles_count() == 0: push_error("Invalid decoration atlas")
@@ -114,9 +116,10 @@ func build() -> void:
 	var water := layer("Water", 0)
 	var shoreline := layer("ShoreFoam", 1)
 	var grass := layer("Ground", 2)
-	var paths := layer("Paths", 3)
+	layer("Paths", 3) # Kept empty for scene compatibility.
 	var crossings := layer("Crossings", 4)
-	var decor := layer("Decorations", 5)
+	var decor := layer("Decorations", 4)
+	var tree_layer := layer("Trees", 5)
 	layer("Ice", 6)
 	layer("IceWalls", 7)
 	var sim := Simulation.new()
@@ -126,10 +129,10 @@ func build() -> void:
 		for x in Simulation.WIDTH:
 			var cell := Vector2i(x, y)
 			water.set_cell(cell, 0, Vector2i.ZERO)
-			if not sim.water(cell) and not Battlefield.crossing(cell): land_cells[cell] = true
-			if Battlefield.crossing(cell): crossings.set_cell(cell, 3, Vector2i(x - Battlefield.river_center(y) + 1, 0))
+			var crossing := Battlefield.crossing(cell) and Vector2(cell).distance_to(Battlefield.CENTRAL_BASE) > 7
+			if not sim.water(cell) and not crossing: land_cells[cell] = true
+			if crossing: crossings.set_cell(cell, 3, Vector2i(x - Battlefield.river_center(y) + 1, 0))
 	for cell in land_cells: grass.set_cell(cell, 1, nine_patch(cell, land_cells))
-	for cell in path_cells: paths.set_cell(cell, 1, nine_patch(cell, path_cells) + Vector2i(5, 0))
 	# The opaque center of the foam sheet belongs UNDER land, with only its
 	# outer ripples exposed over water. Centering on water creates white squares.
 	for cell in land_cells:
@@ -154,7 +157,7 @@ func build() -> void:
 		for offset in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
 			if path_cells.has(cell + offset): plant_tree = false
 		if plant_tree:
-			decor.set_cell(cell, 5, Vector2i.ZERO)
+			tree_layer.set_cell(cell, 5, Vector2i.ZERO)
 			tree_cells.append(cell)
 		elif (cell.x * 17 + cell.y * 31) % 19 == 0:
 			decor.set_cell(cell, [11, 15, 20, 22, 25][(cell.x + cell.y) % 5], Vector2i.ZERO)

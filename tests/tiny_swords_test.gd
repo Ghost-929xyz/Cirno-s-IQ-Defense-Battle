@@ -15,6 +15,7 @@ func check(value: bool, description: String) -> void:
 
 func run() -> void:
 	var game = load("res://scenes/expedition.tscn").instantiate()
+	game.random_map_enabled = false
 	root.add_child(game)
 	await process_frame
 	var map = game.tile_map
@@ -28,26 +29,30 @@ func run() -> void:
 		for x in Sim.WIDTH:
 			if original.water(Vector2i(x, y)) != game.sim.water(Vector2i(x, y)): matching = false
 	check(matching, "All painted cells match the existing gameplay layout")
-	check(map.crossings.get_used_cells().size() == 18 and game.sim.walkable(Vector2i(42, 10)), "Wooden bridges preserve crossing routes")
+	check(map.crossings.get_used_cells().size() == 12 and game.sim.walkable(Vector2i(42, 10)), "Northern and southern bridges remain outside the central dry camp")
 	var foam_on_land := true
 	for cell in map.get_node("ShoreFoam").get_used_cells():
 		if map.ground.get_cell_source_id(cell) == -1: foam_on_land = false
 	check(foam_on_land, "Foam centers are hidden under land")
 	game.pick_card("supplies")
 	game.pick_card("mana")
+	game.confirm_opening_cards()
 	game.sim.choose_base(1)
 	map.sync(game.sim, 0.05, false)
 	check(map.unit_views.size() == game.sim.units.size(), "Every unit has an animated view")
 	check(map.building_views.size() == game.sim.buildings.size(), "Every building has a texture")
 	game.select_all()
+	game.sim.set_point(game.sim.living(0)[0], Vector2(54, 26))
+	game.sim.update_visibility()
 	game.contextual_order(Vector2(54, 25))
 	check(game.sim.living(0)[0].order == "chest", "Island reward beside a building remains clickable")
 	var u: Dictionary = game.sim.living(0)[0]
 	var view = map.unit_views[int(u.id)]
-	check(view.sprite is AnimatedSprite2D and view.sprite.animation == "idle", "Initial troop idle animation")
+	check(view.sprite is AnimatedSprite2D and str(view.sprite.animation).begins_with("idle_"), "Initial troop idle animation")
+	map.sync(game.sim, 0.05, false)
 	game.sim.set_point(u, game.sim.point(u) + Vector2.LEFT)
 	map.sync(game.sim, 0.05, false)
-	check(view.sprite.animation == "run" and view.sprite.flip_h, "Movement selects run and left-facing orientation")
+	check(view.sprite.animation == "run_left" and view.sprite.flip_h, "Movement selects run and left-facing orientation")
 	game.sim.set_point(u, Vector2(7, 12))
 	var enemy: Dictionary = game.sim.add_unit("swordsman", 1, Vector2(8, 12))
 	game.sim.hit(u, enemy, 1, false)

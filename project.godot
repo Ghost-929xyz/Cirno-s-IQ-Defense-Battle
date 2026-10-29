@@ -16,16 +16,17 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="东方冰华战线：冰封幻想乡"
 config/description="基地建设、军团指挥与冰霜魔法的即时战略远征"
-; Keep the existing save directory when changing the displayed project name.
+run/main_scene="res://scenes/menu.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Godot/app_userdata/琪露诺的智商保卫战"
-run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/art/icon_placeholder.svg"
 
 [autoload]
 
 UISoundManager="*res://scripts/autoload/ui_sound_manager.gd"
+MCPRuntimeServer="*res://addons/godot_mcp_toolkit/runtime/mcp_runtime_server.gd"
+_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]
 
@@ -34,6 +35,10 @@ window/size/viewport_height=660
 window/size/window_width_override=1180
 window/size/window_height_override=660
 window/stretch/mode="canvas_items"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 
 [gui]
 

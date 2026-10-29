@@ -26,7 +26,7 @@
 
 ## 素材映射
 
-单位使用 `AnimatedSprite2D` 与缓存的 `SpriteFrames`。Warrior、Archer、Pawn、Torch 的帧尺寸均为 192×192，不能按 64×64 瓦片切割。按移动方向翻转精灵，按目标方向选择侧向、向上、向下攻击行。
+单位使用 `AnimatedSprite2D` 与缓存的 `SpriteFrames`。原始 Warrior、Archer、Pawn、Torch 的帧尺寸均为 192×192，不能按 64×64 瓦片切割。现已补充上下行走帧并接入四向移动，左右沿用原素材；新增图集采用逐帧区域与脚点标定。方向、衔接及素材来源见 [四向动画说明](UNIT_ANIMATION.md)。攻击仍按目标方向选择侧向、向上、向下攻击行。
 
 | 游戏内容 | 当前素材 | 尚缺内容 |
 | --- | --- | --- |

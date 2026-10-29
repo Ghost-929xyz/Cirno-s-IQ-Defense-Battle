@@ -1,14 +1,16 @@
 extends Control
 
-## 游戏开始菜单：标题 + 左侧竖排无边框选项。场景内的 GPUParticles2D 负责飘雪粒子。
+## 游戏开始菜单：标题 + 左侧竖排无边框选项。
 ## 选项为深蓝色无文本框样式，悬停时左侧浮现雪花并高亮文本。
-## 右侧立绘带边缘柔光与微微飘动的动态效果；全屏降雪由场景粒子统一负责。
+## 用户提供的后景粒子、立绘、前景粒子依次叠放，菜单与弹窗置于其上。
 
 const GAME_SCENE_PATH := "res://scenes/expedition.tscn"
 const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
 const SessionScript = preload("res://scripts/autoload/session.gd")
 const PIXEL_FONT: FontFile = preload("res://assets/fonts/fusion_pixel_12px_prop.ttf")
-const HERO_STANDEE: Texture2D = preload("res://assets/ui/hero_standee.png")
+const HERO_STANDEE: Texture2D = preload("res://assets/ui/menu_character.png")
+const PARTICLES_BACK: Texture2D = preload("res://assets/ui/menu_particles_back.png")
+const PARTICLES_FRONT: Texture2D = preload("res://assets/ui/menu_particles_front.png")
 const MENU_BACKGROUND: Texture2D = preload("res://assets/ui/menu_background.png")
 const TITLE_COLUMN_LEFT := 116.0
 const TITLE_COLUMN_WIDTH := 456.0
@@ -23,11 +25,16 @@ var _menu_row_count := 0
 var _slot_overlay: Control = null
 var _options_overlay: Control = null
 var _overlay_mode := ""
+var _seed_input: LineEdit
+var _seed_hint: Label
 
 # 立绘动效状态
 var _hero: TextureRect = null
 var _hero_base_position := Vector2.ZERO
 var _float_time := 0.0
+var _rear_particles: Sprite2D
+var _front_particles: Sprite2D
+const PARTICLE_POSITION := Vector2(-12, -124)
 
 
 func _ready() -> void:
@@ -56,22 +63,27 @@ func _build_ui() -> void:
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 
-	_build_title_block()
+	_rear_particles = _add_particle_layer("ParticlesBack", PARTICLES_BACK, 0.8)
 
 	# 右侧：新立绘作为视觉主体（边缘柔光 + 微微飘动）。
 	var hero := TextureRect.new()
+	hero.name = "CharacterStandee"
 	hero.texture = HERO_STANDEE
 	hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	hero.custom_minimum_size = Vector2.ZERO
-	hero.position = Vector2(310.0, -144.5)
-	hero.size = Vector2(870.0, 900.0)
+	# Keep the supplied full-canvas artwork proportional, including its transparent left margin.
+	hero.size = Vector2(660.0 * HERO_STANDEE.get_width() / HERO_STANDEE.get_height(), 660.0)
+	hero.position = Vector2(180.0, 0.0)
 	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hero.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	hero.pivot_offset = hero.size * 0.5
 	hero.material = _make_hero_glow_material()
 	add_child(hero)
 	_hero = hero
 	_hero_base_position = hero.position
+	_front_particles = _add_particle_layer("ParticlesFront", PARTICLES_FRONT, 0.9)
+	_build_title_block()
 
 	# 左侧竖排无边框菜单选项。
 	var has_any_save := false
@@ -85,6 +97,21 @@ func _build_ui() -> void:
 	_add_menu_item("继续游戏", _on_continue_pressed, not has_any_save)
 	_add_menu_item("游戏设置", _on_options_pressed)
 	_add_menu_item("退出游戏", quit_game)
+
+
+func _add_particle_layer(layer_name: String, art: Texture2D, opacity: float) -> Sprite2D:
+	# Control positions snap to pixels in this UI viewport. A Sprite2D preserves
+	# fractional drift without disabling pixel alignment for menu text/buttons.
+	var layer := Sprite2D.new()
+	layer.name = layer_name
+	layer.texture = art
+	layer.centered = false
+	layer.scale = Vector2.ONE * (1204.0 / art.get_width())
+	layer.position = PARTICLE_POSITION
+	layer.modulate.a = opacity
+	layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	add_child(layer)
+	return layer
 
 
 ## 两段式标题：上行压暗作为系列名，下行以高亮冰蓝描边强化主标题。
@@ -168,6 +195,8 @@ func _process(delta: float) -> void:
 	# 立绘小范围微微飘动：垂直浮动 + 轻微水平漂移 + 极轻旋转。
 	_hero.position = _hero_base_position + Vector2(sin(t * 0.55) * 4.0, sin(t * 0.9) * 7.0)
 	_hero.rotation = sin(t * 0.48) * 0.012
+	_rear_particles.position = PARTICLE_POSITION + Vector2(sin(t * 0.21) * 3.0, cos(t * 0.26) * 3.0)
+	_front_particles.position = PARTICLE_POSITION + Vector2(sin(t * 0.34) * -6.0, sin(t * 0.4) * 5.0)
 
 
 ## 立绘边缘柔光：环形采样 alpha 模糊出冰蓝辉光，垫在立绘本体之下。
@@ -211,7 +240,7 @@ func _add_menu_item(text: String, handler: Callable, disabled := false) -> void:
 	button.disabled = disabled
 	button.add_theme_font_size_override("font_size", 25)
 	add_child(button)
-	PixelUITheme.attach_menu_option_fx(button, self, button.position)
+	PixelUITheme.attach_menu_option_fx(button, self, button.position, true)
 	if not disabled:
 		button.pressed.connect(handler)
 
@@ -235,17 +264,40 @@ func _show_slot_overlay(title_text: String) -> void:
 	var panel := Panel.new()
 	panel.position = Vector2(290.0, 120.0)
 	panel.size = Vector2(600.0, 420.0)
+	if _overlay_mode == "new":
+		panel.position.y = 70.0
+		panel.size.y = 520.0
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
 	_slot_overlay.add_child(panel)
 
 	var title := _make_label(panel, title_text, Vector2(20.0, 18.0), Vector2(560.0, 34.0), 24, Color("#edfdff"))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
+	if _overlay_mode == "new":
+		_make_label(panel, "地图种子", Vector2(40, 68), Vector2(100, 32), 18, Color("#c3e9f3"))
+		_seed_input = LineEdit.new()
+		_seed_input.position = Vector2(140, 64)
+		_seed_input.size = Vector2(316, 40)
+		_seed_input.placeholder_text = "留空生成随机地图"
+		_seed_input.max_length = 10
+		_seed_input.add_theme_font_size_override("font_size", 18)
+		panel.add_child(_seed_input)
+		var random_button := _make_panel_button("随机", 16)
+		random_button.position = Vector2(466, 64)
+		random_button.size = Vector2(94, 40)
+		random_button.pressed.connect(func():
+			_seed_input.text = str(randi_range(0, 2147483647))
+			_seed_hint.text = "相同编号生成相同地图。选择下方槽位开始。")
+		panel.add_child(random_button)
+		_seed_hint = _make_label(panel, "输入 0–2147483647 的编号可重现地图；留空随机。", Vector2(40, 111), Vector2(520, 38), 16, Color("#a3c6d5"))
+		_seed_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
 	for slot in range(SaveManager.SLOT_COUNT):
 		_build_slot_row(panel, slot)
 
 	var back_button := _make_panel_button("返回", 15)
 	back_button.position = Vector2(240.0, 356.0)
+	if _overlay_mode == "new": back_button.position.y = 456.0
 	back_button.size = Vector2(120.0, 44.0)
 	back_button.pressed.connect(_hide_overlays)
 	panel.add_child(back_button)
@@ -256,6 +308,7 @@ func _build_slot_row(panel: Panel, slot: int) -> void:
 	var has_save := not summary.is_empty()
 	var row := Button.new()
 	row.position = Vector2(40.0, 74.0 + float(slot) * 92.0)
+	if _overlay_mode == "new": row.position.y += 90.0
 	row.size = Vector2(520.0, 76.0)
 	row.add_theme_font_size_override("font_size", 17)
 	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -291,6 +344,12 @@ func _build_slot_row(panel: Panel, slot: int) -> void:
 
 func _on_slot_chosen(slot: int) -> void:
 	if _overlay_mode == "new":
+		var seed_text := _seed_input.text.strip_edges() if is_instance_valid(_seed_input) else ""
+		if not SessionScript.valid_map_seed(seed_text):
+			_seed_hint.text = "种子需为 0–2147483647 的整数，请重新输入。"
+			_seed_input.grab_focus()
+			return
+		SessionScript.requested_map_seed = str(int(seed_text)) if not seed_text.is_empty() else ""
 		SessionScript.current_slot = slot
 		SessionScript.pending_load_slot = -1
 		SaveManager.delete_slot(slot)
@@ -348,7 +407,7 @@ func _show_expedition_help() -> void:
 	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style())
 	_options_overlay.add_child(panel)
 	_make_label(panel, "冰华远征操作说明", Vector2(30, 20), Vector2(700, 36), 25, Color("#edfdff"))
-	_make_label(panel, "开局随机抽两张效果牌，再点击一个基地位置。\n\n左键单选或框选部队，A 全选；右键移动、攻击、驻军或寻宝。\n选单位后 G 驻军、R 修复，再点击建筑；受损建筑也可驻军。\n选单位后展开建造菜单，选择设施，再点击陆地空位。\n底部展开招募、建造或科技；招募按四类兵种筛选。\n\nQ 冰冻、W 冰墙、E 冰桥，再点击目标；Esc 取消。\n滚轮缩放，中键/方向键平移，小地图定位，Tab 俯瞰，H 回基地。\nP 暂停，Space 提前迎敌，F5 保存。\n\n守完六波后，消灭敌军与敌方建筑即可获胜；打野、寻宝可选。\n部队全部阵亡即失败，驻军算存活部队。\n胜利保留军团与建筑，可继续下一场远征。", Vector2(30, 75), Vector2(700, 290), 17, Color("#c3e9f3"))
+	_make_label(panel, "确认两张效果牌后，从地图中央的火把营地出发。\n基地不再自动产金币；探索迷雾，右键占领资源点（停留 5 秒）。\n金矿 +3 金/秒，魔力泉 +2 BAKA/秒；灵视塔在小地图揭示资源位置。\n\n左键单选/框选，右键友军选中；A 同类/全军，Shift＋右键友军追加。\nF 攻击移动，S 停止，D 原地防守；Shift 追加移动、攻击、占领或建修。\n左键选基地/兵营后，右键设集结点；Shift＋右键增加路线点。\nCtrl＋0–9 编队；数字键选队，双击数字定位；I 循环选择空闲部队。\n编队栏显示人数/生命/交战状态，小地图红圈提示受袭。\n\nQ 冰冻、W 冰墙、E 冰桥；G 驻军、R 修复；滚轮平滑缩放。\nTab 俯瞰，H 回基地，P 暂停，Space 迎敌，F5 保存；底栏右侧可收起。\n守完六波并清剿敌军与建筑获胜；己方基地和全部建筑被毁才失败。", Vector2(30, 75), Vector2(700, 290), 16, Color("#c3e9f3"))
 	var back := _make_panel_button("返回", 16)
 	back.position = Vector2(310, 376)
 	back.size = Vector2(140, 42)

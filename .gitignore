@@ -7,3 +7,7 @@
 *.log
 ~$*.docx
 tools/__pycache__/
+
+# Exported builds (keep the distributable demo archive)
+exports/*
+!exports/Icefront-Demo-Windows.zip

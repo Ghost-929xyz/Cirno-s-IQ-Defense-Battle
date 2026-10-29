@@ -18,7 +18,7 @@ func run() -> void:
 			check(not s.navigation.get_id_path(Vector2i(base), Vector2i(camp)).is_empty(), "All bases can reach both enemy camps")
 	for pos in Field.BASE_SITES + Field.HOUSES + Field.CAMPS + Field.CHESTS + Field.WILDLIFE:
 		check(s.walkable(Vector2i(pos)), "Landmark placed on land: " + str(pos))
-	# Each bridge is a distinct crossing: the other two can be closed without isolating either bank.
+	# The central dry camp now also connects both river banks.
 	for kept_y in [10, 25, 40]:
 		s.walls.clear()
 		for y in [10, 11, 25, 26, 40, 41]:
@@ -27,7 +27,7 @@ func run() -> void:
 		s.rebuild_navigation()
 		var route: Array[Vector2i] = s.navigation.get_id_path(Vector2i(8, 25), Vector2i(73, 40))
 		check(not route.is_empty(), "Route remains open through crossing " + str(kept_y))
-		check(route.any(func(cell): return Field.crossing(cell) and cell.y in [kept_y, kept_y + 1]), "Path uses remaining bridge")
+		check(route.any(func(cell): return (Field.crossing(cell) and cell.y in [kept_y, kept_y + 1]) or Vector2(cell).distance_to(Field.CENTRAL_BASE) <= 7), "Path uses an open bridge or the central dry camp")
 	s.walls.clear()
 	s.rebuild_navigation()
 	check(s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "Island is isolated before spell")
@@ -36,6 +36,8 @@ func run() -> void:
 	s.choose_base(1)
 	check(s.cast("bridge", Vector2(51, 25)) and not s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "One ice bridge opens island")
 	for kind in s.catalog:
+		# Measure each speed in isolation; bodies now prevent stacking.
+		s.units.clear()
 		var u: Dictionary = s.add_unit(kind, 0, Vector2(5, 5))
 		var speed: float = s.catalog[kind].move_speed
 		check(speed >= 1.6 and speed <= 2.8, "Bounded movement speed: " + kind)
@@ -59,10 +61,12 @@ func run() -> void:
 	var current := restored.snapshot()
 	check(restored.restore(current) and restored.point(restored.units[0]) == Vector2(10, 24), "Current saves do not migrate twice")
 	var game = load("res://scenes/expedition.tscn").instantiate()
+	game.random_map_enabled = false
 	root.add_child(game)
 	await process_frame
 	game.pick_card("supplies")
 	game.pick_card("mana")
+	game.confirm_opening_cards()
 	game.sim.choose_base(1)
 	await process_frame
 	game.paused = true
@@ -77,12 +81,12 @@ func run() -> void:
 	check(game.visible_world_rect().end.x <= 80.01 and game.visible_world_rect().end.y <= 50.01, "Camera clamps east and south")
 	game.toggle_drawer("recruit")
 	game.filter_roster("骑乘")
-	check(game.drawers.recruit.visible and game.train_buttons.values().filter(func(button): return button.visible).size() == 5, "Recruit drawer shows one family")
+	check(game.drawers.recruit.visible and game.train_buttons.values().filter(func(button): return button.visible).is_empty(), "Locked cavalry are hidden before the academy is complete")
 	game.toggle_drawer("research")
 	check(not game.drawers.recruit.visible and game.drawers.research.visible, "Only one command panel opens at a time")
 	game.paused = false
 	game.set_mode("bridge")
-	check(game.open_drawer.is_empty() and game.mode == "bridge", "Spell targeting closes blocking drawer")
+	check(game.open_drawer == "research" and game.drawers.research.visible and game.mode == "bridge", "Spell targeting preserves the fixed command area")
 	game.zoom = 21.0
 	game.focus_home()
 	game.tile_map.sync(game.sim, 0.0, false)
@@ -97,9 +101,9 @@ func run() -> void:
 	var order_event := InputEventMouseButton.new()
 	order_event.button_index = MOUSE_BUTTON_RIGHT
 	order_event.pressed = true
-	order_event.position = game.world_to_screen(Vector2(18, 25))
+	order_event.position = game.world_to_screen(Vector2(46, 25))
 	game._unhandled_input(order_event)
-	check(soldier.order == "move" and Vector2(soldier.goal_x, soldier.goal_y).distance_to(Vector2(18, 25)) < 0.01, "Screen right-click sends correct world move order")
+	check(soldier.order == "move" and Vector2(soldier.goal_x, soldier.goal_y).distance_to(Vector2(46, 25)) < 0.01, "Screen right-click sends correct world move order")
 	game.center_camera(Vector2(42, 20))
 	var spell_event := InputEventMouseButton.new()
 	spell_event.button_index = MOUSE_BUTTON_LEFT
@@ -110,6 +114,7 @@ func run() -> void:
 	check(game.sim.walkable(Vector2i(42, 12)) and game.mode == "select", "Screen-targeted spell freezes intended river cell")
 	var anchored: Vector2 = game.map_point(game.MAP_RECT.get_center())
 	game.zoom_at(game.MAP_RECT.get_center(), 1.15)
+	game.update_smooth_zoom(1.0 / 60.0)
 	check(game.map_point(game.MAP_RECT.get_center()).distance_to(anchored) < 0.01, "Zoom preserves world point under cursor away from bounds")
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
@@ -117,6 +122,7 @@ func run() -> void:
 	click.position = game.minimap.size * Vector2(0.75, 0.7)
 	game.minimap._gui_input(click)
 	check(game.camera_center.x > 50 and game.camera_center.y > 30, "Minimap click navigates camera while paused or active")
+	check(not game.tactical_overlay.visible and not game.zoom_animating, "Small map navigation does not open overview or retain zoom drift")
 	game.queue_free()
 	await process_frame
 	print("EXPANDED_BATTLEFIELD_TEST checks=%d failures=%d" % [checks, failures])

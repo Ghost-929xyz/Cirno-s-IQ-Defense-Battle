@@ -61,8 +61,8 @@ script = ExtResource("3_hud")
 
 [node name="GPUParticles2D" type="GPUParticles2D" parent="." unique_id=466389124]
 material = SubResource("CanvasItemMaterial_tbgi4")
-visibility_rect = Rect2(-5400, -3400, 10800, 6800)
 amount = 20000
 texture = ExtResource("4_jyhfs")
 lifetime = 2.0599999999999996
+visibility_rect = Rect2(-5400, -3400, 10800, 6800)
 process_material = SubResource("ParticleProcessMaterial_tipki")

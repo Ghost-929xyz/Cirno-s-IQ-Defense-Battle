@@ -11,6 +11,7 @@ func run() -> void:
 	await create_timer(0.3).timeout
 	game.pick_card("mana")
 	game.pick_card("supplies")
+	game.confirm_opening_cards()
 	await process_frame
 	game.sim.choose_base(1)
 	game.sim.gold = 1800
@@ -18,6 +19,15 @@ func run() -> void:
 	await create_timer(0.3).timeout
 	game.refresh_ui()
 	await capture("res://.tools/floating-hud.png")
+	game.toggle_drawer("build")
+	await capture("res://.tools/compact-build.png")
+	game.toggle_drawer("research")
+	game.filter_roster("特战")
+	await capture("res://.tools/compact-research.png")
+	game.toggle_dock()
+	await capture("res://.tools/compact-collapsed.png")
+	game.toggle_drawer("recruit")
+	game.filter_roster("步战")
 	game.toggle_overview()
 	await create_timer(0.2).timeout
 	await capture("res://.tools/floating-overview.png")

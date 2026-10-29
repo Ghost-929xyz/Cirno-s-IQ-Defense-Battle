@@ -16,8 +16,25 @@ const BRIDGE_COST := 20.0
 const WALL_SECONDS := 25.0
 const FREEZE_SECONDS := 4.0
 const WILDLIFE_BAKA := 15.0
-const WILDLIFE_KILL_VALUE_RATIO := 1.5
 const WILDLIFE_HEAL_RATIO := 0.25
+const MOUNTED := ["cavalry", "ranger", "lancer", "scout", "cataphract"]
+const UNIT_PARENTS := {
+	"guard": "swordsman", "paladin": "guard", "heavy_infantry": "guard",
+	"sniper": "archer", "sniper_plus": "sniper", "ice_archer": "archer", "ice_archer_plus": "ice_archer",
+	"ranger": "cavalry", "scout": "ranger", "lancer": "cavalry", "cataphract": "lancer",
+	"hermit": "assassin", "hermit_dodge": "hermit", "hermit_blink": "hermit",
+	"berserker": "assassin", "berserker_plus": "berserker",
+}
+const EXCLUSIVE_BRANCHES := [["paladin", "heavy_infantry"], ["sniper", "ice_archer"], ["ranger", "lancer"], ["hermit", "berserker"], ["hermit_dodge", "hermit_blink"]]
+
+static func body_radius(kind: String) -> float:
+	return 0.70 if kind in MOUNTED else 0.48
+
+static func terrain_radius(kind: String) -> float:
+	return 0.30 if kind in MOUNTED else 0.16
+
+static func visual_scale(kind: String) -> float:
+	return 1.40 if kind in MOUNTED else (1.14 if kind in ["heavy_infantry", "berserker", "berserker_plus"] else 1.0)
 ## Cells/second: deliberate battle pacing, independent of source workbook units.
 const MOVE_SPEEDS := {
 	"swordsman": 1.9, "guard": 1.8, "paladin": 1.8, "heavy_infantry": 1.6,
@@ -29,6 +46,7 @@ const BUILDINGS := {
 	"base": {"name": "主基地", "hp": 2000.0, "cost": 0, "beds": 20, "fire": 8},
 	"barracks": {"name": "兵营", "hp": 1000.0, "cost": 160, "beds": 10, "fire": 5},
 	"well": {"name": "魔力井", "hp": 1000.0, "cost": 200, "beds": 10, "fire": 5},
+	"academy": {"name": "科技所", "hp": 1000.0, "cost": 240, "beds": 10, "fire": 5},
 	"house": {"name": "房屋", "hp": 1000.0, "cost": 120, "beds": 10, "fire": 5},
 	"outpost": {"name": "敌军营地", "hp": 1000.0, "cost": 160, "beds": 10, "fire": 5},
 }

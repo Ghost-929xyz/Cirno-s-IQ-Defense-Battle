@@ -17,30 +17,17 @@ func check(value: bool, description: String) -> void:
 func fresh():
 	var s = Sim.new()
 	s.rng.seed = 137
-	s.draw_cards()
+	s.choose_card("supplies")
+	s.choose_card("mana")
 	s.choose_base(1)
 	return s
 
 func run() -> void:
-	var combinations := {}
-	for seed_value in 30:
-		var a = Sim.new()
-		var b = Sim.new()
-		a.rng.seed = seed_value
-		b.rng.seed = seed_value
-		check(not a.choose_base(1), "Base stays locked before drawing")
-		var drawn: Array = a.draw_cards()
-		check(drawn.size() == 2 and drawn[0] != drawn[1] and a.phase == "base", "Two distinct cards are drawn")
-		check(b.draw_cards() == drawn, "Seeded draw can be reproduced")
-		check(a.draw_cards().is_empty() and a.cards == drawn, "Draw cannot be rerolled")
-		check(a.gold == Rules.START_GOLD + (250 if drawn.has("supplies") else 0) and a.baka == Rules.START_BAKA + (50 if drawn.has("mana") else 0), "Draw applies its currency effects once")
-		drawn.sort()
-		combinations[str(drawn)] = true
-	check(combinations.size() >= 6, "Draw offers varied combinations")
 	var s = Sim.new()
-	s.choose_card("mana")
+	check(s.draw_cards().is_empty() and s.phase == "cards", "Automatic card draw cannot choose for the player")
+	check(s.choose_card("supplies") and not s.choose_card("supplies"), "Explicit card choices are distinct")
 	var restored = Sim.new()
-	check(restored.restore(JSON.parse_string(JSON.stringify(s.snapshot()))) and restored.draw_cards().size() == 2 and restored.cards.has("mana"), "Old partially chosen card save can finish drawing")
+	check(restored.restore(JSON.parse_string(JSON.stringify(s.snapshot()))) and restored.choose_card("mana") and restored.phase == "prep", "Partially chosen legacy save completes at central base")
 	s = fresh()
 	var base: Dictionary = s.buildings[0]
 	var survivor: Dictionary = s.living(0)[0]
@@ -51,10 +38,21 @@ func run() -> void:
 	base.queue = ["swordsman"]
 	var foe: Dictionary = s.add_unit("sniper", 1, Vector2(12, 25))
 	s.hit(foe, survivor, 100000, true)
-	check(s.phase == "defeat" and base.hp == 2000, "Annihilation loses even with intact base and pending training")
+	check(s.active() and base.hp == 2000 and s.living(0).is_empty(), "Losing every troop does not lose while the base survives")
 	var gold_before: float = s.gold
+	s.units.erase(foe)
+	s.step(Rules.TRAIN_SECONDS)
+	check(s.active() and s.gold == gold_before and s.living(0).size() == 1, "Surviving base continues queued training without passive income")
+	var surviving_site: Dictionary = s.add_building("well", 0, Vector2(15, 25), false)
+	foe = s.add_unit("swordsman", 1, Vector2(12, 25))
+	s.hit(foe, base, 100000, false)
+	check(s.active() and surviving_site.hp > 0 and not surviving_site.complete, "Base destruction is survivable with an unfinished friendly building")
+	s.hit(foe, surviving_site, 100000, false)
+	check(s.phase == "defeat" and not s.living(0).is_empty(), "Last friendly building destruction loses immediately even with surviving troops")
+	gold_before = s.gold
+	var elapsed_before: float = s.elapsed
 	s.step(10)
-	check(s.gold == gold_before and s.living(0).is_empty(), "Defeat stops production and recovery")
+	check(s.gold == gold_before and s.elapsed == elapsed_before, "Defeat stops production and battle simulation")
 	s = fresh()
 	s.phase = "cleanup"
 	s.units = s.units.filter(func(u): return u.team != 1)
@@ -100,7 +98,7 @@ func run() -> void:
 	s.start_wave()
 	var occupier: Dictionary = s.units.filter(func(u): return u.team == 1 and u.order == "garrison")[0]
 	var house: Dictionary = s.entity(int(occupier.target))
-	check(not s.navigation.get_id_path(Vector2i(s.point(occupier).round()), Vector2i(s.point(house).round())).is_empty(), "Enemy chooses reachable neutral house")
+	check(s.reachable_goal(s.point(occupier), s.point(house)) != Vector2i(-1, -1), "Enemy chooses a reachable entrance to the blocked house")
 	for i in 2500: s.step_unit(occupier, 0.05)
 	check(occupier.home == house.id and house.team == 1, "Enemy walks to and captures house")
 	s.start_wave()
@@ -171,8 +169,9 @@ func run() -> void:
 		s.garrison(archer, house)
 	foe = s.add_unit("swordsman", 1, Vector2(7, 5))
 	foe.hp = 10000
+	s.update_visibility()
 	s.step_building(house, 0.1)
-	check(foe.hp == 9880, "Three promoted archers still give three initial-archer shots")
+	check(foe.hp == 9856, "Three promoted archers apply their 20 percent damage bonus to garrison fire")
 	house.cooldown = 0
 	s.units.erase(foe)
 	var hermit: Dictionary = s.add_unit("hermit", 1, Vector2(9, 5))
@@ -189,11 +188,13 @@ func run() -> void:
 	s.units = [s.add_unit("hermit", 1, Vector2(9, 5))]
 	hermit = s.units[0]
 	var blink: Dictionary = s.add_unit("hermit_blink", 0, Vector2(6.5, 5))
+	s.command([blink.id], "attack", s.point(hermit), hermit.id)
+	s.update_visibility()
 	s.step_unit(blink, 0.05)
 	check(blink.special == 0, "Blink cannot jump farther than two cells")
 	s.set_point(blink, Vector2(7, 5))
 	s.step_unit(blink, 0.05)
-	check(blink.special == 10 and s.point(blink) == s.point(hermit), "Blink triggers at two-cell range")
+	check(blink.special == 10 and s.unit_position_clear(s.point(blink), blink.kind, blink.id), "Blink triggers at two-cell range")
 	s = fresh()
 	s.units.clear()
 	s.buildings.clear()
@@ -204,6 +205,7 @@ func run() -> void:
 	check(not s.garrison(s.add_unit("archer", 0, Vector2(5, 5)), base), "Base rejects its twenty-first occupant")
 	foe = s.add_unit("swordsman", 1, Vector2(7, 5))
 	foe.hp = 10000
+	s.update_visibility()
 	s.step_building(base, 0.1)
 	check(foe.hp == 9680, "Twenty occupants still cap at eight initial-archer shots")
 	var veteran: Dictionary = s.occupants(base.id)[0]
@@ -212,28 +214,33 @@ func run() -> void:
 	s.set_point(foe, Vector2(70, 5))
 	s.step_building(base, 1)
 	s.step_unit(veteran, 1)
-	check(is_equal_approx(veteran.hp, 20 + veteran.max_hp * 0.08), "Top-rank base garrison stacks five and three percent healing")
+	check(is_equal_approx(veteran.hp, 20 + veteran.max_hp * 0.07), "Top-rank base garrison stacks five and two percent healing")
 	s = fresh()
 	s.units = s.units.filter(func(u): return u.team == 0)
 	s.buildings = s.buildings.filter(func(b): return b.team == 0)
 	base = s.buildings[0]
 	base.hp = 0
 	s.buildings.clear()
+	s.add_building("house", 0, Vector2(12, 25))
 	s.phase = "cleanup"
 	var enemy_house: Dictionary = s.add_building("house", 1, Vector2(20, 25))
 	s.check_outcome()
 	check(s.phase == "cleanup", "Intact empty enemy house still blocks victory and supplies raids")
 	s.hit(s.living(0)[0], enemy_house, 10000, false)
 	s.check_outcome()
-	check(s.phase == "victory", "Army can win without its own base once hostile assets are gone")
+	check(s.phase == "victory", "Army can win without its base when another friendly building survives")
 	# UI exposes damaged-building garrison and repair as separate orders.
 	var game = load("res://scenes/expedition.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
-	game.draw_opening_cards()
-	check(game.sim.phase == "base" and game.sim.cards.size() == 2, "Opening UI performs an actual random draw")
+	game.pick_card("supplies")
+	game.pick_card("mana")
+	game.confirm_opening_cards()
+	check(game.sim.phase == "prep" and game.sim.cards.size() == 2, "Opening UI confirms choices and starts at central base")
 	game.sim.choose_base(1)
 	await process_frame
+	game.all_select_stage = 0
+	game.select_all()
 	game.select_all()
 	base = game.sim.buildings[0]
 	base.hp = 1000
@@ -245,6 +252,8 @@ func run() -> void:
 	check(game.sim.occupants(base.id).size() == 3, "Damaged-building order actually shelters all initial troops")
 	game.selected_building = base.id
 	game.evacuate_selected()
+	game.all_select_stage = 0
+	game.select_all()
 	game.select_all()
 	check(game.building_order(game.sim.point(base), "repair"), "Repair command remains independently available")
 	var repair_before: float = base.hp

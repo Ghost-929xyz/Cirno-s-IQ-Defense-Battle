@@ -3,6 +3,7 @@ extends RefCounted
 const WIDTH := 80
 const HEIGHT := 50
 const VERSION := 2
+const CENTRAL_BASE := Vector2(40, 25)
 const BASE_SITES := [Vector2(8, 10), Vector2(8, 25), Vector2(8, 40)]
 const HOUSES := [Vector2(27, 10), Vector2(29, 27), Vector2(27, 40), Vector2(56, 25), Vector2(65, 34)]
 const CAMPS := [Vector2(72, 7), Vector2(73, 40)]
@@ -29,6 +30,7 @@ static func crossing(cell: Vector2i) -> bool:
 	return cell.y in [10, 11, 25, 26, 40, 41] and absi(cell.x - river_center(cell.y)) <= 1
 
 static func water(cell: Vector2i) -> bool:
+	if Vector2(cell).distance_to(CENTRAL_BASE) <= 7.0: return false
 	if cell.x < 2 or cell.y < 2 or cell.x >= WIDTH - 2 or cell.y >= HEIGHT - 2: return true
 	if crossing(cell): return false
 	if absi(cell.x - river_center(cell.y)) <= 1: return true
