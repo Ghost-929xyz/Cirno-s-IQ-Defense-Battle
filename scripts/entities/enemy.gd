@@ -233,7 +233,6 @@ func _draw() -> void:
 		var bar_width := maxf(6.0, radius * 2.4)
 		var bar_position := Vector2(-bar_width * 0.5, -radius - maxf(2.0, Metrics.art(14.0)))
 		var bar_height := 2.0 if is_boss() else 1.5
-		draw_rect(Rect2(bar_position, Vector2(bar_width, bar_height)), Color(0.03, 0.06, 0.09, 0.9))
 		var ratio := clampf(current_hp / max_hp, 0.0, 1.0)
 		var bar_color := Color("#ff6b82") if is_boss() else Color("#7ef0a4")
-		draw_rect(Rect2(bar_position + Vector2(0.5, 0.5), Vector2(maxf(0.5, (bar_width - 1.0) * ratio), 0.5)), bar_color)
+		preload("res://scripts/ui/rounded_bars.gd").draw(self, Rect2(bar_position, Vector2(bar_width, maxf(2, bar_height))), ratio, bar_color)

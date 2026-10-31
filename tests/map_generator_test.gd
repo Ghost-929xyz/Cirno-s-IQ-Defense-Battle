@@ -46,7 +46,7 @@ func run() -> void:
 					if layout.roads.has(cell + Vector2i(x, y)): clear_road = false
 			check(dry_footprint, "The full tree sprite stays on dry ground for seed " + str(seed_value))
 			check(clear_road, "Roads avoid the entire tree sprite for seed " + str(seed_value))
-			blocked[cell] = true
+			blocked[preload("res://scripts/data/tree_geometry.gd").trunk_cell(cell)] = true
 		for site in Field.HOUSES: blocked[Vector2i(site)] = true
 		var visited: Dictionary = _flood(Vector2i(Field.CENTRAL_BASE), blocked)
 		for base in Field.BASE_SITES:

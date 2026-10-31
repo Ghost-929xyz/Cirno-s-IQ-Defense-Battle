@@ -182,6 +182,7 @@ func run() -> void:
 	var ranged_foe: Dictionary = s.add_unit("sniper", 1, Vector2(38, 5))
 	s.units = [hidden, ranged_foe]
 	s.buildings.clear()
+	s.rebuild_navigation() # Removing test buildings also removes their footprints.
 	hp_before = hidden.hp
 	s.step_unit(ranged_foe, 0.05)
 	check(hidden.hp == hp_before and ranged_foe.raid_target == -1, "Global raid targeting does not bypass hermit detection reduction")
@@ -257,7 +258,9 @@ func run() -> void:
 	game.select_all()
 	check(game.building_order(game.sim.point(base), "repair"), "Repair command remains independently available")
 	var repair_before: float = base.hp
-	for u in game.sim.living(0): game.sim.set_point(u, game.sim.point(base))
+	# Stand at distinct exterior repair positions, never inside the solid castle.
+	var repairers: Array = game.sim.living(0)
+	for i in repairers.size(): game.sim.set_point(repairers[i], game.sim.point(base) + Vector2(i - 1, 1))
 	for u in game.sim.living(0): game.sim.step_unit(u, 1)
 	check(is_equal_approx(base.hp - repair_before, 90 if game.sim.cards.has("builders") else 60), "Selected builders stack their documented repair rates")
 	game.queue_free()

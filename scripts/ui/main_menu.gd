@@ -4,11 +4,13 @@ extends Control
 ## 选项为深蓝色无文本框样式，悬停时左侧浮现雪花并高亮文本。
 ## 用户提供的后景粒子、立绘、前景粒子依次叠放，菜单与弹窗置于其上。
 
+const FrostMenu = preload("res://scripts/ui/frost_menu.gd")
 const GAME_SCENE_PATH := "res://scenes/expedition.tscn"
 const PixelUITheme = preload("res://scripts/ui/pixel_ui.gd")
 const SessionScript = preload("res://scripts/autoload/session.gd")
 const PIXEL_FONT: FontFile = preload("res://assets/fonts/fusion_pixel_12px_prop.ttf")
 const HERO_STANDEE: Texture2D = preload("res://assets/ui/menu_character.png")
+const SELECT_SOUND: AudioStream = preload("res://assets/audio/ui/main_menu_select.mp3")
 const PARTICLES_BACK: Texture2D = preload("res://assets/ui/menu_particles_back.png")
 const PARTICLES_FRONT: Texture2D = preload("res://assets/ui/menu_particles_front.png")
 const MENU_BACKGROUND: Texture2D = preload("res://assets/ui/menu_background.png")
@@ -38,6 +40,8 @@ const PARTICLE_POSITION := Vector2(-12, -124)
 
 
 func _ready() -> void:
+	var audio := get_node_or_null("/root/GameAudio")
+	if audio != null: audio.enter_menu()
 	_build_ui()
 
 
@@ -98,6 +102,7 @@ func _build_ui() -> void:
 			break
 
 	_menu_row_count = 0
+	_add_menu_item("新手教学", func(): get_tree().change_scene_to_file("res://scenes/tutorial.tscn"))
 	_add_menu_item("新的游戏", _on_new_game_pressed)
 	_add_menu_item("继续游戏", _on_continue_pressed, not has_any_save)
 	_add_menu_item("游戏设置", _on_options_pressed)
@@ -244,6 +249,7 @@ func _add_menu_item(text: String, handler: Callable, disabled := false) -> void:
 	button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.disabled = disabled
 	button.add_theme_font_size_override("font_size", 25)
+	button.set_meta("select_sound", SELECT_SOUND)
 	add_child(button)
 	PixelUITheme.attach_menu_option_fx(button, self, button.position, true)
 	if not disabled:
@@ -265,89 +271,63 @@ func _on_continue_pressed() -> void:
 func _show_slot_overlay(title_text: String) -> void:
 	_hide_overlays()
 	_slot_overlay = _make_overlay_dimmer()
-
 	var panel := Panel.new()
-	panel.position = Vector2(290.0, 120.0)
-	panel.size = Vector2(600.0, 420.0)
-	if _overlay_mode == "new":
-		panel.position.y = 70.0
-		panel.size.y = 520.0
-	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
+	panel.name = "ArchivePanel"
+	panel.position = Vector2(230, 40)
+	panel.size = Vector2(720, 580)
 	_slot_overlay.add_child(panel)
-
-	var title := _make_label(panel, title_text, Vector2(20.0, 18.0), Vector2(560.0, 34.0), 24, Color("#edfdff"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
+	FrostMenu.decorate(panel, "新的远征" if _overlay_mode == "new" else "继续远征", "ICE FRONTLINE  /  三份独立指挥档案")
 	if _overlay_mode == "new":
-		_make_label(panel, "地图种子", Vector2(40, 68), Vector2(100, 32), 18, Color("#c3e9f3"))
+		FrostMenu.label(panel,"地图种子",Vector2(36,126),Vector2(104,36))
 		_seed_input = LineEdit.new()
-		_seed_input.position = Vector2(140, 64)
-		_seed_input.size = Vector2(316, 40)
+		_seed_input.position = Vector2(142,124)
+		_seed_input.size = Vector2(414,40)
 		_seed_input.placeholder_text = "留空生成随机地图"
 		_seed_input.max_length = 10
-		_seed_input.add_theme_font_size_override("font_size", 18)
+		_seed_input.add_theme_stylebox_override("normal",FrostMenu.style())
+		_seed_input.add_theme_stylebox_override("focus",FrostMenu.style(Color("14344a"),Color("b8efff")))
 		panel.add_child(_seed_input)
-		var random_button := _make_panel_button("随机", 16)
-		random_button.position = Vector2(466, 64)
-		random_button.size = Vector2(94, 40)
-		random_button.pressed.connect(func():
-			_seed_input.text = str(randi_range(0, 2147483647))
-			_seed_hint.text = "相同编号生成相同地图。选择下方槽位开始。")
-		panel.add_child(random_button)
-		_seed_hint = _make_label(panel, "输入 0–2147483647 的编号可重现地图；留空随机。", Vector2(40, 111), Vector2(520, 38), 16, Color("#a3c6d5"))
-		_seed_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-
-	for slot in range(SaveManager.SLOT_COUNT):
-		_build_slot_row(panel, slot)
-
-	var back_button := _make_panel_button("返回", 15)
-	back_button.position = Vector2(240.0, 356.0)
-	if _overlay_mode == "new": back_button.position.y = 456.0
-	back_button.size = Vector2(120.0, 44.0)
-	back_button.pressed.connect(_hide_overlays)
-	panel.add_child(back_button)
-
+		FrostMenu.button(panel,"随机",Vector2(568,124),Vector2(116,40),func():
+			_seed_input.text = str(randi_range(0,2147483647)))
+		_seed_hint = FrostMenu.label(panel,"相同种子生成相同地图。选择下方档案开始。",Vector2(36,174),Vector2(648,30),15,Color("8db3c6"))
+	else:
+		FrostMenu.label(panel,"选择一份档案，接续上次的远征。",Vector2(36,138),Vector2(648,40),18)
+	for slot in SaveManager.SLOT_COUNT: _build_slot_row(panel,slot)
+	FrostMenu.button(panel,"返回",Vector2(36,522),Vector2(648,36),_hide_overlays)
 
 func _build_slot_row(panel: Panel, slot: int) -> void:
 	var summary := SaveManager.get_slot_summary(slot)
 	var has_save := not summary.is_empty()
-	var row := Button.new()
-	row.position = Vector2(40.0, 74.0 + float(slot) * 92.0)
-	if _overlay_mode == "new": row.position.y += 90.0
-	row.size = Vector2(520.0, 76.0)
-	row.add_theme_font_size_override("font_size", 17)
-	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	PixelUITheme.apply_button_theme(row)
-	PixelUITheme.attach_button_sound_feedback(row)
-
+	var row := FrostMenu.button(panel,"",Vector2(36,218 + slot * 98),Vector2(648,84),func(): _on_slot_chosen(slot))
+	row.disabled = _overlay_mode == "continue" and not has_save
+	FrostMenu.label(row,"%02d" % (slot+1),Vector2(18,16),Vector2(60,48),32,Color("76bbd4"))
+	FrostMenu.label(row,"远征档案" if has_save else "空白档案",Vector2(92,10),Vector2(480,28),20)
+	var detail := "开启一段新的远征" if _overlay_mode == "new" else "尚未创建存档"
 	if has_save:
-		row.text = "  槽位 %d    第 %d 波 · %s %d · 建筑 %d 座\n  保存于 %s" % [
-			slot + 1,
-			int(summary.get("wave", 0)),
-			"金币" if summary.get("mode") == "rts" else "冻气",
-			int(summary.get("frost", 0)),
-			int(summary.get("structures", 0)),
-			str(summary.get("saved_at", "")),
-		]
-		row.add_theme_color_override("font_color", Color("#e8fcff"))
-	else:
-		row.text = "  槽位 %d    < 空存档 >" % (slot + 1)
-		row.add_theme_color_override("font_color", Color("#7fa8bd"))
+		detail = "第 %d 波  ·  金币 %d  ·  %s" % [summary.wave,summary.frost,str(summary.saved_at).replace("T"," ")]
+	FrostMenu.label(row,detail,Vector2(92,44),Vector2(526,26),14,Color("8db3c6"))
+	FrostMenu.label(row,"›",Vector2(610,22),Vector2(28,34),26)
 
-	var selectable := false
-	if _overlay_mode == "new":
-		selectable = true
-		if has_save:
-			row.text += "\n  （选择将覆盖此存档）"
-	elif _overlay_mode == "continue":
-		selectable = has_save
-	row.disabled = not selectable
-	if selectable:
-		row.pressed.connect(func() -> void: _on_slot_chosen(slot))
-	panel.add_child(row)
-
-
-func _on_slot_chosen(slot: int) -> void:
+func _on_slot_chosen(slot: int, confirmed := false) -> void:
+	if _overlay_mode == "new" and is_instance_valid(_seed_input) and not SessionScript.valid_map_seed(_seed_input.text.strip_edges()):
+		_seed_hint.text = "种子需为 0–2147483647 的整数，请重新输入。"
+		_seed_input.grab_focus()
+		return
+	if _overlay_mode == "new" and SaveManager.has_save(slot) and not confirmed:
+		var confirm := Panel.new()
+		confirm.position = Vector2(260,150)
+		confirm.size = Vector2(660,360)
+		var shield := ColorRect.new()
+		shield.size = Vector2(1180,660)
+		shield.color = Color(0.01,0.03,0.06,0.88)
+		_slot_overlay.add_child(shield)
+		shield.add_child(confirm)
+		FrostMenu.decorate(confirm,"覆盖档案 %02d？" % (slot+1),"开始新游戏会替换该槽位的已有进度")
+		FrostMenu.button(confirm,"确认开始新的远征",Vector2(32,160),Vector2(596,56),func():
+			shield.queue_free()
+			_on_slot_chosen(slot,true))
+		FrostMenu.button(confirm,"取消",Vector2(32,242),Vector2(596,48),shield.queue_free)
+		return
 	if _overlay_mode == "new":
 		var seed_text := _seed_input.text.strip_edges() if is_instance_valid(_seed_input) else ""
 		if not SessionScript.valid_map_seed(seed_text):
@@ -372,49 +352,28 @@ func _on_slot_chosen(slot: int) -> void:
 func _on_options_pressed() -> void:
 	_hide_overlays()
 	_options_overlay = _make_overlay_dimmer()
-
 	var panel := Panel.new()
-	panel.position = Vector2(390.0, 190.0)
-	panel.size = Vector2(400.0, 260.0)
-	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style(Color("#0a2038"), Color("#86e9ff")))
+	panel.position = Vector2(290,50)
+	panel.size = Vector2(600,560)
 	_options_overlay.add_child(panel)
-
-	var title := _make_label(panel, "游戏设置", Vector2(20.0, 18.0), Vector2(360.0, 34.0), 24, Color("#edfdff"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	var reset_tutorial := _make_panel_button("重置新手引导", 15)
-	reset_tutorial.position = Vector2(100.0, 80.0)
-	reset_tutorial.size = Vector2(200.0, 44.0)
-	reset_tutorial.pressed.connect(func() -> void:
-		SessionScript.tutorial_done = false
-		reset_tutorial.text = "已重置 ✓"
-	)
-	panel.add_child(reset_tutorial)
-	var help_button := _make_panel_button("新版远征操作说明", 15)
-	help_button.position = Vector2(100.0, 132.0)
-	help_button.size = Vector2(200.0, 40.0)
-	help_button.pressed.connect(_show_expedition_help)
-	panel.add_child(help_button)
-
-	var back_button := _make_panel_button("返回", 15)
-	back_button.position = Vector2(140.0, 190.0)
-	back_button.size = Vector2(120.0, 44.0)
-	back_button.pressed.connect(_hide_overlays)
-	panel.add_child(back_button)
-
+	FrostMenu.decorate(panel,"游戏设置","音乐与音效  /  引导与操作")
+	preload("res://scripts/ui/audio_settings.gd").add_controls(panel,Vector2(32,124),536)
+	var reset := FrostMenu.button(panel,"重置新手引导",Vector2(32,412),Vector2(260,48),func(): SessionScript.tutorial_done = false)
+	reset.pressed.connect(func(): reset.text = "已重置引导")
+	FrostMenu.button(panel,"远征操作说明",Vector2(308,412),Vector2(260,48),_show_expedition_help)
+	FrostMenu.button(panel,"返回",Vector2(32,490),Vector2(536,44),_hide_overlays)
 
 func _show_expedition_help() -> void:
 	_hide_overlays()
 	_options_overlay = _make_overlay_dimmer()
 	var panel := Panel.new()
-	panel.position = Vector2(210.0, 110.0)
-	panel.size = Vector2(760.0, 440.0)
-	panel.add_theme_stylebox_override("panel", PixelUITheme.panel_style())
+	panel.position = Vector2(210.0, 40.0)
+	panel.size = Vector2(760.0, 580.0)
+	FrostMenu.decorate(panel,"远征操作说明","ICE FRONTLINE  /  指挥手册")
 	_options_overlay.add_child(panel)
-	_make_label(panel, "冰华远征操作说明", Vector2(30, 20), Vector2(700, 36), 25, Color("#edfdff"))
-	_make_label(panel, "确认两张效果牌后，从地图中央的火把营地出发。\n基地不再自动产金币；探索迷雾，右键占领资源点（停留 5 秒）。\n金矿 +3 金/秒，魔力泉 +2 BAKA/秒；灵视塔在小地图揭示资源位置。\n\n左键单选/框选，右键友军选中；A 同类/全军，Shift＋右键友军追加。\nF 攻击移动，S 停止，D 原地防守；Shift 追加移动、攻击、占领或建修。\n左键选基地/兵营后，右键设集结点；Shift＋右键增加路线点。\nCtrl＋0–9 编队；数字键选队，双击数字定位；I 循环选择空闲部队。\n编队栏显示人数/生命/交战状态，小地图红圈提示受袭。\n\nQ 冰冻、W 冰墙、E 冰桥；G 驻军、R 修复；滚轮平滑缩放。\nTab 俯瞰，H 回基地，P 暂停，Space 迎敌，F5 保存；底栏右侧可收起。\n守完六波并清剿敌军与建筑获胜；己方基地和全部建筑被毁才失败。", Vector2(30, 75), Vector2(700, 290), 16, Color("#c3e9f3"))
+	_make_label(panel, "确认两张效果牌后，从地图中央的火把营地出发。\n基地不再自动产金币；探索迷雾，右键占领资源点（停留 5 秒）。\n金矿 +3 金/秒，魔力泉 +2 BAKA/秒；灵视塔在小地图揭示资源位置。\n\n左键单选/框选，右键友军选中；A 同类/全军，Shift＋右键友军追加。\nF 攻击移动，S 停止，D 原地防守；Shift 追加移动、攻击、占领或建修。\n左键选基地/兵营后，右键设集结点；Shift＋右键增加路线点。\nCtrl＋0–9 编队；数字键选队，双击数字定位；I 循环选择空闲部队。\n编队栏显示人数/生命/交战状态，小地图红圈提示受袭。\n\nQ 冰冻、W 冰墙、E 冰桥；G 驻军、R 修复；滚轮平滑缩放。\nTab 俯瞰，H 回基地，P 暂停，Space 迎敌，F5 保存；底栏右侧可收起。\n守完六波并清剿敌军与建筑获胜；己方基地和全部建筑被毁才失败。", Vector2(30, 128), Vector2(700, 360), 16, Color("#c3e9f3"))
 	var back := _make_panel_button("返回", 16)
-	back.position = Vector2(310, 376)
+	back.position = Vector2(310, 512)
 	back.size = Vector2(140, 42)
 	back.pressed.connect(_hide_overlays)
 	panel.add_child(back)
@@ -451,7 +410,7 @@ func _make_panel_button(text: String, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.add_theme_font_size_override("font_size", font_size)
-	PixelUITheme.apply_button_theme(button)
+	FrostMenu.button_theme(button)
 	PixelUITheme.attach_button_sound_feedback(button)
 	button.add_theme_color_override("font_color", Color("#e8fcff"))
 	return button
@@ -473,4 +432,3 @@ func _make_label(
 	label.add_theme_color_override("font_color", color)
 	parent.add_child(label)
 	return label
-

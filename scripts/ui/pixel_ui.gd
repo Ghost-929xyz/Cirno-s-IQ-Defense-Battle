@@ -116,19 +116,16 @@ static func minimap_frame_style() -> StyleBox:
 
 
 static func bar_back(fallback_bg := Color("#0a1c2c"), fallback_border := Color("#2c6c8e")) -> StyleBox:
-	return _style_from("bar_back.png", BAR_MARGIN, fallback_bg, fallback_border, Vector4(4.0, 4.0, 4.0, 4.0))
+	return preload("res://scripts/ui/rounded_bars.gd").style(fallback_bg, 8)
 
 
 static func bar_fill(ratio: float) -> StyleBox:
-	var file_name := "bar_fill_green.png"
 	var fallback := Color("#4fd39a")
 	if ratio <= 0.35:
-		file_name = "bar_fill_red.png"
 		fallback = Color("#e05a72")
 	elif ratio <= 0.65:
-		file_name = "bar_fill_amber.png"
 		fallback = Color("#e0b24a")
-	return _style_from(file_name, BAR_MARGIN, fallback, fallback.lightened(0.35), Vector4(2.0, 2.0, 2.0, 2.0))
+	return preload("res://scripts/ui/rounded_bars.gd").style(fallback, 8)
 
 
 static func apply_button_theme(button: Button) -> void:
@@ -152,7 +149,7 @@ static func attach_button_sound_feedback(button: Button) -> void:
 	button.pressed.connect(func() -> void:
 		var manager := _get_ui_sound_manager()
 		if manager != null:
-			manager.call("play_select")
+			manager.call("play_select", button.get_meta("select_sound", null))
 	)
 
 
@@ -325,4 +322,3 @@ static func _fx_stamp_disc(img: Image, p: Vector2, r: float, color: Color) -> vo
 			var existing := img.get_pixel(x, y)
 			if a > existing.a:
 				img.set_pixel(x, y, Color(color.r, color.g, color.b, a))
-

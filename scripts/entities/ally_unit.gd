@@ -275,5 +275,4 @@ func _draw() -> void:
 	if current_hp < max_hp - 0.01 or _selected:
 		var bar_width := maxf(6.0, radius * 2.6)
 		var bar_position := Vector2(-bar_width * 0.5, -radius - 2.0 + bob)
-		draw_rect(Rect2(bar_position, Vector2(bar_width, 1.5)), Color(0.02, 0.05, 0.09, 0.9))
-		draw_rect(Rect2(bar_position + Vector2(0.5, 0.5), Vector2(maxf(0.5, (bar_width - 1.0) * clampf(current_hp / maxf(1.0, max_hp), 0.0, 1.0)), 0.5)), Color("#87ecff"))
+		preload("res://scripts/ui/rounded_bars.gd").draw(self, Rect2(bar_position, Vector2(bar_width, 2)), current_hp / maxf(1.0, max_hp), Color("#87ecff"))

@@ -17,6 +17,10 @@ const WALL_SECONDS := 25.0
 const FREEZE_SECONDS := 4.0
 const WILDLIFE_BAKA := 15.0
 const WILDLIFE_HEAL_RATIO := 0.25
+const TREE_WOOD := 20
+const TREE_WORK_SECONDS := 6.0
+const CAMPFIRE_WOOD := 20
+const CAMPFIRE_BUILD_SECONDS := 3.0
 const MOUNTED := ["cavalry", "ranger", "lancer", "scout", "cataphract"]
 const UNIT_PARENTS := {
 	"guard": "swordsman", "paladin": "guard", "heavy_infantry": "guard",
@@ -28,10 +32,13 @@ const UNIT_PARENTS := {
 const EXCLUSIVE_BRANCHES := [["paladin", "heavy_infantry"], ["sniper", "ice_archer"], ["ranger", "lancer"], ["hermit", "berserker"], ["hermit_dodge", "hermit_blink"]]
 
 static func body_radius(kind: String) -> float:
-	return 0.70 if kind in MOUNTED else 0.48
+	return 0.50 if kind in MOUNTED else 0.34
 
 static func terrain_radius(kind: String) -> float:
 	return 0.30 if kind in MOUNTED else 0.16
+
+static func sight_radius(kind: String) -> float:
+	return 8.0 if kind == "scout" else 5.0
 
 static func visual_scale(kind: String) -> float:
 	return 1.40 if kind in MOUNTED else (1.14 if kind in ["heavy_infantry", "berserker", "berserker_plus"] else 1.0)

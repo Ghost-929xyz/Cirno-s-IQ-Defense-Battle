@@ -1,0 +1,50 @@
+Warsong — Usage Terms
+Author: Wareya
+Source: https://warsong.pages.dev/pages/terms/
+Page date: 2022/10/3
+Acquired: 2026-10-31
+The English text below is the author's usage terms, retained for the included audio.
+The music uses “Touhou Project Fanwork, No Resale”; the combat sounds use CC0.
+
+Usage Terms
+
+This site contains many of my creations (“works”), which, subject to their terms of use, you can use freely in anything: game projects, multimedia stories, visual novels, youtube videos, school projects, etc. Different creations have different terms of use. There are three main sets of terms of use I use on this site, summarized below. Some works might not specify that they use these terms, in which case these terms don’t apply.
+
+Creative Commons Zero – You can use the work for absolutely anything, as if it were public domain.
+
+No Resale – You can use the works for absolutely anything EXCEPT that you cannot resell it as an asset without heavily modifying it. You can, however, include it in free or paid distributions of supplementary material for a distinct transformative work, like OSTs or art books for a game. These restrictions do not apply to heavily transformative or very minor uses of the work; you can use the work in heavily transformative or minor ways freely.
+
+Touhou Project Fanwork, No Resale – The work cannot be sold as an asset, but you must also abide by the official Touhou Project fanwork guidelines. Also, if the work music and is given under these terms of use, it cannot be sold.
+
+The above three bold-headed paragraphs are summaries. The actual sets of terms of use are listed below, with numbered section. A given work is subject to the set of terms named on its page. If the name is written slightly wrong, the closest-named set of terms applies.
+
+NOTE: the individual pages for each work might specify extra terms or legal restrictions, which apply in addition to the terms here.
+
+Independent of these terms, redistribution in the form of archival (e.g. uploading to youtube, the internet archive, a wiki site, etc), or under the same terms given here (e.g. as a mirror, grabbing it for a friend without an internet connection, sharing it with other people you’re working on a project with, etc), is perfectly OK, as long as you give attribution.
+
+Leaving the work sitting loose in a public version control repository is also OK, as long as you’re not trying to launder away the work’s terms of use. Attribution is not needed for other uses. (This paragraph does not apply extra restrictions to Creative Commons Zero works; you can use them with no absolutely restrictions at all.)
+
+For works shared as “No Resale” (not as “Touhou Project Fanwork, No Resale”), you may instead (or also) use the work under the terms of any version of the Creative Commons Attribution-NonCommercial license OR Creative Commons Attribution-ShareAlike license, as created by the Creative Commons organization, giving attribution to Wareya.
+
+I reserve the right to change these terms without notice. The version of the terms you are subject to is the version that was present at the time that you acquired the work. If said terms change, you can choose to be subject to the new version of the terms, but the new version is not forced upon you for works you have already acquired.
+
+If you have the legal heebie-jeebies but believe that your usage matches the spirit of the terms, you can contact me by email or social media and ask for looser terms.
+
+Creative Commons Zero
+
+1. The work is provided under the terms of the well-known Creative Commons Zero legal code. See: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+No Resale
+
+1. You can use the work freely without attribution or royalties, for both commerical and noncommercial purposes.
+2. You cannot sell the work under terms designed to allow a third party to use it freely as-is in their own creative endeavors, e.g. in sample collections, texture packs, music collections, etc. Selling creative tools/games/toys that happen to contain the work as a small part is allowed.
+3. If you distribute the work with the intent to allow other people to use it freely in their own creative endeavors, free of charge, you must provide it under these terms and give attribution.
+4. If you only use small and/or heavily transformed parts of the work in a transformative work that is highly creative in nature, then sections 2 and 3 are waived, but only for that transformative work, and only as long as the inclusion of the work in the transformative work remains small and/or heavily transformative.
+
+Touhou Project Fanwork, No Resale
+
+1. You can use the work under the same allowances and restrictions as in the No Resale terms, but also subject to the following additional terms.
+2. Your use of the work is constrained by the Touhou Project’s official fanwork guidelines.
+3. If the work is music, it cannot be sold on its own or as a part of an album, LP, EP, single, or other analogous musical release, unless said musical release is a collection of songs all used in a single game or collection of closely connected games (e.g. an OST release). Covers or rearrangements of the work, however, are not subject to this restriction, only the original work as such.
+
+(This is not a term or condition, but keep in mind that the official Touhou Project fanwork guidelines place implied restrictions on the digital sale of music in most places.)

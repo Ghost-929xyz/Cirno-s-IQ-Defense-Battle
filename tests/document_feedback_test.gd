@@ -26,7 +26,7 @@ func no_overlap(s) -> bool:
 	for u in s.units:
 		if u.hp <= 0 or u.home != -1: continue
 		var cell := Vector2i(s.point(u).round())
-		if cells.has(cell) or not s.unit_position_clear(s.point(u), u.kind, u.id): return false
+		if not s.unit_position_clear(s.point(u), u.kind, u.id): return false
 		cells[cell] = true
 	return true
 

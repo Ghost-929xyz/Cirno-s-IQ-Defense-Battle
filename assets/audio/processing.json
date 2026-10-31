@@ -1,0 +1,90 @@
+[
+  {
+    "file": "assets/audio/combat/melee_hit_a.wav",
+    "source_file": "foley - clank.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.65,
+    "duration_seconds": 0.38,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/melee_hit_b.wav",
+    "source_file": "foley - metal clank.wav",
+    "source_start_seconds": 0.8571428571428571,
+    "source_cut_seconds": 0.65,
+    "duration_seconds": 0.3269,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/arrow_hit.wav",
+    "source_file": "foley - crunchy impacts.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.38,
+    "duration_seconds": 0.3633,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/arrow_release.wav",
+    "source_file": "foley - swishes.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.45,
+    "duration_seconds": 0.181,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/chop.wav",
+    "source_file": "foley - crunchy impacts.wav",
+    "source_start_seconds": 0.8571428571428571,
+    "source_cut_seconds": 0.48,
+    "duration_seconds": 0.3652,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/unit_down.wav",
+    "source_file": "hurteffect.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.5,
+    "duration_seconds": 0.2325,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/building_break.wav",
+    "source_file": "breakeffect.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.8,
+    "duration_seconds": 0.6509,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/frost_hit.wav",
+    "source_file": "cirnobullet.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.45,
+    "duration_seconds": 0.2083,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/combat/spell_cast.wav",
+    "source_file": "floopawoopy.wav",
+    "source_start_seconds": 0,
+    "source_cut_seconds": 0.6,
+    "duration_seconds": 0.6,
+    "normalization": "peak -6 dBFS, mono 22050Hz, trimmed silence, 2ms attack / 20ms release"
+  },
+  {
+    "file": "assets/audio/music/preparation.ogg",
+    "source_file": "electric_sheep.ogg",
+    "sha256": "ddcc6106245d882a5156e8e881a94c337eca6bd8a8134e211f9b5165b3fa9549",
+    "integrated_lufs": -16.3,
+    "playback_gain_db": -5.7,
+    "processing": "No audio modification; original Ogg copied under a scene-specific filename"
+  },
+  {
+    "file": "assets/audio/music/battle.ogg",
+    "source_file": "romantic_children.ogg",
+    "sha256": "0722d25107d132a3a3103af93d9480890a473604071648b3d13b110c8a3d5ce7",
+    "integrated_lufs": -9.59,
+    "playback_gain_db": -12.41,
+    "processing": "No audio modification; original Ogg copied under a scene-specific filename"
+  }
+]

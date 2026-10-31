@@ -20,10 +20,12 @@ run/main_scene="res://scenes/menu.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Godot/app_userdata/琪露诺的智商保卫战"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/icon="res://assets/art/icon_placeholder.svg"
+config/icon="res://assets/ui/cirno_avatar.png"
+config/windows_native_icon="res://assets/ui/cirno_avatar.ico"
 
 [autoload]
 
+GameAudio="*res://scripts/autoload/game_audio.gd"
 UISoundManager="*res://scripts/autoload/ui_sound_manager.gd"
 MCPRuntimeServer="*res://addons/godot_mcp_toolkit/runtime/mcp_runtime_server.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"

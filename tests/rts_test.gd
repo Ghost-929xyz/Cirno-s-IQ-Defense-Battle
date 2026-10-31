@@ -105,8 +105,8 @@ func run() -> void:
 	check(not restored.restore({"wave_index": 2}), "Legacy save rejected without mutation")
 	check(restored.walkable(Vector2i(42, 12)), "Restored ice bridge is traversable")
 	s = fresh()
-	check(s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "Island initially inaccessible")
-	check(s.cast("bridge", Vector2(51, 25)) and not s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "Ice bridge unlocks island exploration")
+	check(s.reachable_goal(Vector2(50, 25), Vector2(54, 25)) == Vector2i(-1, -1), "Island initially inaccessible")
+	check(s.cast("bridge", Vector2(51, 25)) and s.reachable_goal(Vector2(50, 25), Vector2(54, 25)) != Vector2i(-1, -1), "Ice bridge unlocks island exploration")
 	# Pure garrison fire must cap at 5 and 8 initial archers, regardless of occupancy.
 	s.units.clear()
 	s.buildings.clear()
@@ -249,7 +249,7 @@ func test_training_spacing_and_placement() -> void:
 		check(s.walkable(Vector2i(s.point(spawned))), "Trained unit spawns on walkable terrain")
 		for u in s.units:
 			if u.id == spawned.id or u.hp <= 0 or u.home != -1: continue
-			check(s.point(u).distance_to(s.point(spawned)) >= 1.25, "Trained units keep clearance from existing units")
+			check(s.point(u).distance_to(s.point(spawned)) >= Rules.body_radius(u.kind) + Rules.body_radius(spawned.kind), "Trained bodies keep clearance from existing units")
 		for b in s.buildings:
 			check(s.point(b).distance_to(s.point(spawned)) >= 1.5, "Trained units spawn outside buildings")
 	# A tiny enclosed exit must wait instead of stacking units or spawning

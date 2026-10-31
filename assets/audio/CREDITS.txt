@@ -1,0 +1,52 @@
+音频素材说明 / AUDIO CREDITS
+
+本作为基于东方Project的非官方二次创作游戏。
+Touhou Project and the original compositions: ZUN / 上海アリス幻樂団 (Team Shanghai Alice).
+
+背景音乐 / MUSIC
+编曲与录音：Wareya，Warsong。
+1. music/preparation.ogg — Electric Sheep
+   原曲：Theme of Eastern Story / テーマ・オブ・イースタンストーリー (ZUN)
+   用途：主菜单、探索、波次间的舒缓背景音乐。
+2. music/battle.ogg — Romantic Children (electronic, loopable)
+   原曲：Romantic Children (ZUN)
+   用途：敌军来袭及交战时的战斗背景音乐。
+
+作者发布页：https://warsong.pages.dev/music/cosplay/
+原音频下载地址：
+https://warsong.pages.dev/music/cosplay/electric%20sheep.ogg
+https://warsong.pages.dev/music/cosplay/romantic%20children%20electronic%20loopable.ogg
+
+音乐授权：Warsong 的 Touhou Project Fanwork, No Resale 条款。
+条款原文：https://warsong.pages.dev/pages/terms/
+本地原条款副本：WARSONG_TERMS.txt（试玩包内为 Warsong音频授权条款.txt）。
+东方二次创作指引：https://touhou-project.news/guidelines_en/
+
+音乐不是 CC0 素材，不归本项目的代码许可覆盖。
+作者允许在创作项目中使用，并允许带署名和原条款将文件保留在公开版本控制仓库中。
+不得将曲目当作可自由复用的音频素材包单独销售；再次分发时须保留本说明和作者的原条款，并遵守东方二次创作指引。
+音乐数据保持作者原始 Ogg 不变，仅重命名为游戏用途文件名；响度、循环和淡入淡出在游戏播放时处理。
+
+打击及动作音效 / SOUND EFFECTS
+作者：Wareya，Warsong。
+来源：RPG Foley — https://warsong.pages.dev/sounds/rpg/
+      Nostalgiac Blues Sounds — https://warsong.pages.dev/sounds/nostalgiac/
+原包：https://warsong.pages.dev/sounds/rpg%20foley.zip
+      https://warsong.pages.dev/sounds/nostalgiac.zip
+授权：Creative Commons Zero 1.0 (CC0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+combat/melee_hit_a.wav — foley - clank.wav
+combat/melee_hit_b.wav — foley - metal clank.wav
+combat/arrow_hit.wav — foley - crunchy impacts.wav
+combat/arrow_release.wav — foley - swishes.wav
+combat/chop.wav — foley - crunchy impacts.wav
+combat/unit_down.wav — hurteffect.wav
+combat/building_break.wav — breakeffect.wav
+combat/frost_hit.wav — cirnobullet.wav
+combat/spell_cast.wav — floopawoopy.wav
+
+处理：依据作者说明分割 Foley 片段、裁剪静音、转为单声道 22050 Hz PCM、峰值归一化至约 -6 dBFS，并添加短淡入淡出。具体片段位置、时长和音乐校验值见 processing.json。
+
+本说明仅覆盖以上新增音乐和 combat/ 音效，不将项目中既有 UI 或用户提供的其他素材声明为 CC0。
+来源与条款核对日期：2026-10-31。

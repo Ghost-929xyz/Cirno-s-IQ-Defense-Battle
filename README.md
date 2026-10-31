@@ -76,3 +76,17 @@ godot --path . --script tests/rts_visual_test.gd
 下载 [Windows 64 位免安装 Demo](exports/Icefront-Demo-Windows.zip)，解压后运行 `Icefront-Demo.exe`。操作与存档提示见包内的试玩说明。
 
 重新打包：`powershell -ExecutionPolicy Bypass -File tools/build_demo.ps1 -Godot "你的 Godot 可执行文件路径"`。需要安装与引擎版本一致的 Windows 导出模板；脚本使用临时副本移除开发插件，再导出并生成 ZIP。
+
+## 新手教学
+
+主菜单点击“新手教学”，进入包含 30 步实操的独立关卡，涵盖视角、指挥、经济、建造、科技、驻军、魔法、防守及存读档。支持目标定位和本步重试，教学不会覆盖正式远征存档。详见 [教学说明](docs/TUTORIAL.md)。
+
+## 音乐与音效
+
+主菜单、探索与波次间播放 Wareya 的《Electric Sheep》（ZUN《Theme of Eastern Story》改编）；敌军来袭或发生交战时，以 1.5 秒淡入淡出切换至《Romantic Children》电子编曲。来袭敌军清除后恢复舒缓音乐。暂停、打开局内菜单或战术地图会降低音乐音量。
+
+近战命中、弓箭发射与命中、冰系命中、单位倒下、建筑破坏、施法和伐木使用独立音效，仅播放视野与屏幕范围内的声音，并限制密集叠音。主菜单“游戏设置”和局内“声音设置 / 鸣谢”可分别调节音乐、战斗音效、菜单音效，自动保存音量。
+
+来源：[Wareya 东方编曲](https://warsong.pages.dev/music/cosplay/)、[RPG Foley](https://warsong.pages.dev/sounds/rpg/)、[Nostalgiac Blues Sounds](https://warsong.pages.dev/sounds/nostalgiac/)。音乐按作者的 Touhou Project Fanwork, No Resale 条款使用，新增打击音效为 CC0；详细署名、用途和授权范围见 [音频素材说明](assets/audio/CREDITS.txt)。
+
+音频验证：`godot --path . --script tests/battle_audio_test.gd`（48 项，包含实际音频播放与设置界面渲染）。

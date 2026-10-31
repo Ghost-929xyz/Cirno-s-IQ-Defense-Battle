@@ -137,8 +137,7 @@ func _draw_health_bar(extra_y: float = -10.0, width: float = 10.0) -> void:
 		return
 	var bar_height := maxf(2.0, Metrics.cells(0.55))
 	var bar_position := Vector2(-width * 0.5, extra_y)
-	draw_rect(Rect2(bar_position, Vector2(width, bar_height)), Color(0.02, 0.05, 0.09, 0.92))
 	var color := Color("#75e7a5")
 	if get_health_ratio() < 0.35:
 		color = Color("#ff6d82")
-	draw_rect(Rect2(bar_position + Vector2(0.5, 0.5), Vector2((width - 1.0) * get_health_ratio(), bar_height - 1.0)), color)
+	preload("res://scripts/ui/rounded_bars.gd").draw(self, Rect2(bar_position, Vector2(width, bar_height)), get_health_ratio(), color)

@@ -35,7 +35,7 @@ func run() -> void:
 		check(seeded.resource_sites.size() == 9 and seeded.generated_layout.roads.is_empty(), "Seed has nine resource sites and no road layer")
 		check(seeded.resource_sites.all(func(site): return not seeded.resource_known(site)), "Every resource location starts unknown")
 		for site in seeded.resource_sites:
-			check(seeded.walkable(Vector2i(seeded.point(site))) and not seeded.navigation.get_id_path(Vector2i(Field.CENTRAL_BASE), Vector2i(seeded.point(site))).is_empty(), "Every resource is reachable from central camp")
+			check(not seeded.walkable(Vector2i(seeded.point(site))) and seeded.reachable_goal(Field.CENTRAL_BASE, seeded.point(site)) != Vector2i(-1, -1), "Every solid resource has a reachable interaction edge from central camp")
 	var s = fresh()
 	check(s.is_visible(Field.CENTRAL_BASE) and s.torch_positions().size() == 4 and not s.is_visible(Vector2(72, 7)), "Four camp torches light only the opening surroundings")
 	var initial_gold: float = s.gold
@@ -131,7 +131,7 @@ func run() -> void:
 	var queued = fresh()
 	var builder: Dictionary = queued.living(0)[0]
 	queued.command([builder.id], "move", Vector2(43, 25))
-	check(queued.construct("well", Vector2(44, 28), [builder.id], true) and builder.order == "move" and builder.orders[0].order == "repair", "Shift construction retains movement and queues the building work")
+	check(queued.construct("well", Vector2(42, 29), [builder.id], true) and builder.order == "move" and builder.orders[0].order == "repair", "Shift construction retains movement and queues the building work")
 	queued.command([builder.id], "garrison", queued.point(queued.buildings[0]), queued.buildings[0].id)
 	queued.command([builder.id], "move", Vector2(43, 23), -1, true)
 	for i in 160: queued.step_unit(builder, 0.1)

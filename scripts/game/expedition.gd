@@ -6,6 +6,7 @@ const Session = preload("res://scripts/autoload/session.gd")
 const Saves = preload("res://scripts/autoload/save_manager.gd")
 const FONT = preload("res://assets/fonts/unifont.otf")
 const Art = preload("res://scripts/data/tiny_swords_art.gd")
+const ResourceArt = preload("res://scripts/effects/resource_art.gd")
 const CELL := 21.0
 const MAX_ZOOM := 32.0
 const FogLayer = preload("res://scripts/ui/rts_fog.gd")
@@ -59,9 +60,13 @@ var idle_button: Button
 var fog: Node2D
 var command_strip: Control
 var selected_building := -1
+var selected_prop := -1
 var hovered_building := -1
 var building_cursor := Vector2(-1, -1)
 var mode := "select"
+const FrostMenu = preload("res://scripts/ui/frost_menu.gd")
+var game_menu: Control
+var game_menu_status: Label
 var paused := false
 var accumulator := 0.0
 var hud_clock := 0.0
@@ -88,12 +93,15 @@ var overlay: Panel
 var pause_button: Button
 var train_buttons: Dictionary = {}
 var wave_button: Button
+var vision_crystal: Node2D
+var torch_heat: Node2D
 var winter_weather: Node2D
 @export var random_map_enabled := true
 @onready var tile_map: Node2D = $Battlefield/FogLakeTileMap
 
 func _ready() -> void:
 	sim.configure_terrain(tile_map.terrain_water_cells(), tile_map.terrain_obstacle_cells())
+	sim.register_trees(tile_map.trees.get_used_cells())
 	if Session.pending_load_slot >= 0:
 		var slot: int = Session.pending_load_slot
 		Session.pending_load_slot = -1
@@ -132,6 +140,18 @@ func _ready() -> void:
 	winter_weather.z_index = 20
 	$Battlefield.add_child(winter_weather)
 	winter_weather.setup(tile_map, sim)
+	torch_heat = preload("res://scripts/effects/torch_heat.gd").new()
+	torch_heat.game = self
+	world_overlay.add_child(torch_heat)
+	vision_crystal = preload("res://scripts/effects/vision_crystal.gd").new()
+	vision_crystal.game = self
+	world_overlay.add_child(vision_crystal)
+	var audio := get_node_or_null("/root/GameAudio")
+	if audio != null: audio.bind_game(self)
+
+func _exit_tree() -> void:
+	var audio := get_node_or_null("/root/GameAudio")
+	if audio != null: audio.leave_game(self)
 
 func _process(delta: float) -> void:
 	update_smooth_zoom(delta)
@@ -171,6 +191,8 @@ func _process(delta: float) -> void:
 	update_building_feedback()
 	tile_map.update_unit_feedback(selected)
 	winter_weather.sync(sim, simulation_blocked())
+	torch_heat.sync()
+	vision_crystal.sync()
 	world_overlay.queue_redraw()
 	minimap.queue_redraw()
 	queue_redraw()
@@ -307,18 +329,18 @@ func build_ui() -> void:
 	var font_bold := FontVariation.new()
 	font_bold.base_font = FONT
 	font_bold.variation_embolden = 0.8
-	var keys := ["gold", "baka", "capacity", "tech", "tier"]
-	var names := ["金币", "BAKA", "容量", "科技所", "路线"]
-	var offsets := [326, 470, 620, 802, 922]
+	var keys := ["gold", "wood", "baka", "capacity", "tech", "tier"]
+	var names := ["金币", "木材", "BAKA", "容量", "科技所", "路线"]
+	var offsets := [304, 426, 548, 670, 812, 940]
 	for i in keys.size():
 		var title := label_at(layer, names[i], Vector2(offsets[i], 10), Vector2(42, 25), 13)
 		title.add_theme_color_override("font_color", Color("b8cccf"))
-		var number := label_at(layer, "", Vector2(offsets[i] + 46, 3), Vector2(100, 34), 25)
+		var number := label_at(layer, "", Vector2(offsets[i] + 46, 3), Vector2(90, 34), 23)
 		number.add_theme_font_override("font", font_bold)
 		number.add_theme_color_override("font_color", GOLD if keys[i] == "gold" else (BLUE if keys[i] == "baka" else Color("f4f8f6")))
 		resource_labels[keys[i]] = number
 	pause_button = icon_button_at(layer, "pause", Vector2(1068, 2), toggle_pause, "暂停 / 继续  P")
-	icon_button_at(layer, "menu", Vector2(1122, 2), return_menu, "返回菜单")
+	icon_button_at(layer, "menu", Vector2(1122, 2), open_game_menu, "游戏菜单 · 存档 / 读取")
 	objective = label_at(layer, "", Vector2(23, 39), Vector2(730, 25), 13)
 	if not sim.map_seed.is_empty():
 		var seed_button := compact_button_at(layer, "地图种子 %s · 复制" % sim.map_seed, Vector2(823, 38), Vector2(332, 29), copy_map_seed)
@@ -347,7 +369,7 @@ func build_ui() -> void:
 	all_button.tooltip_text = "第一次选中当前兵种的所有场外单位，再按一次选中全部场外部队。"
 	compact_button_at(dock, "撤出", Vector2(320, 6), Vector2(50, 28), evacuate_selected)
 	compact_button_at(dock, "基地 H", Vector2(376, 6), Vector2(76, 28), focus_home)
-	compact_button_at(dock, "存档 F5", Vector2(458, 6), Vector2(94, 28), save_progress.bind(true))
+	compact_button_at(dock, "存档 F5", Vector2(458, 6), Vector2(94, 28), open_game_menu.bind("save"))
 	dock_toggle = compact_button_at(dock, "收起 ▼", Vector2(576, 6), Vector2(96, 28), toggle_dock)
 	dock_toggle.tooltip_text = "收起指挥栏以腾出战场视野；点击页签可直接展开。"
 	for i in 3:
@@ -389,7 +411,9 @@ func build_ui() -> void:
 		b.add_theme_font_size_override("font_size", 13)
 	compact_button_at(build, "驻军 G", Vector2(8, 94), Vector2(96, 28), set_mode.bind("garrison"))
 	compact_button_at(build, "修复 R", Vector2(110, 94), Vector2(96, 28), set_mode.bind("repair"))
-	label_at(build, "完工增加 20 容量 · 仅初始剑士与弓箭手可驻军", Vector2(220, 96), Vector2(450, 24), 12)
+	compact_button_at(build, "伐木 T", Vector2(212, 94), Vector2(96, 28), set_mode.bind("chop"))
+	compact_button_at(build, "火堆 C · 20 木", Vector2(314, 94), Vector2(156, 28), set_mode.bind("campfire"))
+	label_at(build, "右键树木 · 每棵 20 木材", Vector2(482, 96), Vector2(190, 24), 12)
 	var research: Panel = drawers.research
 	index = 0
 	for family in FAMILIES:
@@ -598,7 +622,7 @@ func toggle_overview() -> void:
 	tactical_overlay.visible = not tactical_overlay.visible
 
 func simulation_blocked() -> bool:
-	return paused or tactical_overlay.visible or wave_intro.active
+	return paused or is_instance_valid(game_menu) or tactical_overlay.visible or wave_intro.active
 
 func advance_wave() -> void:
 	if simulation_blocked(): return
@@ -662,6 +686,7 @@ func refresh_ui() -> void:
 	army_label.visible = command_visible
 	army_scroll.visible = command_visible
 	resource_labels.gold.text = "%d" % sim.gold
+	resource_labels.wood.text = str(sim.wood)
 	resource_labels.baka.text = "%d" % sim.baka
 	resource_labels.capacity.text = "%d/%d" % [sim.used_capacity(), sim.capacity()]
 	resource_labels.tech.text = "就绪" if sim.has_academy() else "未建"
@@ -702,7 +727,13 @@ func refresh_ui() -> void:
 		if not u.is_empty():
 			var progress := "已满级" if u.rank == 2 else "累计经验 %.0f / >%d" % [u.kill_value, sim.catalog[u.kind].cost * (3 if u.rank == 0 else 6)]
 			details.text = "%s · %.0f/%.0f HP · %s · 晋升 %d/2\n%s" % [sim.catalog[u.kind].name, u.hp, u.max_hp, progress, u.rank, "一级伤害 +20% · 二级生命上限 +20% / 每秒回复 2%"]
-	elif selected.size() > 1: details.text = "已选中 %d 名部队\n右键移动 / 攻击 / 寻宝 · G 驻军 / R 修复" % selected.size()
+	elif selected.size() > 1: details.text = "已选中 %d 名部队\n右键树木伐木 · C 布置火堆 · G 驻军 / R 修复" % selected.size()
+	if selected_prop != -1:
+		var prop: Dictionary = sim.entity(selected_prop)
+		if prop.get("kind", "") == "tree":
+			details.text = "树木 · 伐木进度 %.0f%% · 产出 %d 木材\n选中部队右键伐木；或按 T 派遣最近的空闲部队。" % [(1.0-float(prop.hp)/float(prop.max_hp))*100,Rules.TREE_WOOD] if prop.hp > 0 else "树桩 · 木材已采集\n这片空地现在可以通行，也可布置火堆。"
+		elif prop.get("kind", "") == "campfire":
+			details.text = "火堆 · %s\n消耗 20 木材，点燃后照亮周边迷雾。" % ("已点燃" if prop.complete else "生火中；选中部队右键继续")
 
 func show_phase_overlay() -> void:
 	if is_instance_valid(overlay): overlay.queue_free()
@@ -763,7 +794,11 @@ func train(kind: String) -> void:
 func set_mode(value: String) -> void:
 	if not sim.active() or simulation_blocked(): return
 	mode = value
-	var names := {"barracks": "兵营", "well": "魔力井", "house": "房屋", "academy": "科技所", "freeze": "冰冻", "wall": "冰墙", "bridge": "冰桥", "attack_move": "攻击移动目标"}
+	if value == "chop" and selected.is_empty() and selected_prop != -1:
+		dispatch_lumberjack(selected_prop)
+		mode = "select"
+		return
+	var names := {"chop": "要采集的树木", "campfire": "火堆（20 木材）", "barracks": "兵营", "well": "魔力井", "house": "房屋", "academy": "科技所", "freeze": "冰冻", "wall": "冰墙", "bridge": "冰桥", "attack_move": "攻击移动目标"}
 	if value in ["garrison", "repair"]:
 		sim.message = "点击友方%s建筑，Esc 或右键取消。" % ("或中立已完工" if value == "garrison" else "受损")
 	else: sim.message = "点击地图放置%s，Esc 或右键取消。" % names[value]
@@ -818,6 +853,10 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_MOUSE_EXIT: building_cursor = Vector2(-1, -1)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(game_menu):
+		if event is InputEventKey and event.pressed and event.keycode in [KEY_ESCAPE, KEY_P]: close_game_menu()
+		get_viewport().set_input_as_handled()
+		return
 	if wave_intro.active: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_TAB:
@@ -839,6 +878,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_P: toggle_pause()
 			KEY_H: focus_home()
 			KEY_ESCAPE:
+				selected_prop = -1
 				mode = "select"
 				selected.clear()
 				selected_building = -1
@@ -853,6 +893,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_E: set_mode("bridge")
 			KEY_G: set_mode("garrison")
 			KEY_R: set_mode("repair")
+			KEY_T: set_mode("chop")
+			KEY_C: set_mode("campfire")
 			KEY_F5: save_progress(true)
 			KEY_SPACE: advance_wave()
 	if event is InputEventMouseMotion:
@@ -875,7 +917,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		var pos := map_point(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			if sim.active():
-				if mode in ["barracks", "well", "house", "academy"]:
+				if mode == "campfire":
+					if sim.place_campfire(pos, selected, event.shift_pressed) and not event.shift_pressed: mode = "select"
+				elif mode == "chop":
+					if order_tree_at(pos,event.shift_pressed) and not event.shift_pressed: mode = "select"
+				elif mode in ["barracks", "well", "house", "academy"]:
 					if sim.construct(mode, pos, selected, event.shift_pressed) and not event.shift_pressed: mode = "select"
 				elif mode in ["freeze", "wall", "bridge"]:
 					if sim.cast(mode, pos): mode = "select"
@@ -946,6 +992,7 @@ func select_friendly_at(pos: Vector2, additive := false) -> bool:
 	return false
 
 func select_area(start: Vector2, end: Vector2) -> void:
+	selected_prop = -1
 	selected.clear()
 	selected_building = -1
 	all_select_stage = 0
@@ -956,6 +1003,8 @@ func select_area(start: Vector2, end: Vector2) -> void:
 			if u.home == -1 and unit_hit(u, pos):
 				selected.append(u.id)
 				return
+		selected_prop = prop_at_screen_position(end)
+		if selected_prop != -1: return
 		for b in sim.buildings:
 			if building_hit(b, pos):
 				selected_building = int(b.id)
@@ -970,14 +1019,19 @@ func contextual_order(pos: Vector2, append := false) -> void:
 		if u.team != 0 and u.hp > 0 and u.home == -1 and sim.is_visible(sim.point(u)) and unit_hit(u, pos):
 			sim.command(selected, "attack", pos, int(u.id), append)
 			return
+	if order_tree_at(pos, append, false): return
+	for fire in sim.campfires:
+		if not fire.complete and sim.is_visible(sim.point(fire)) and sim.point(fire).distance_to(pos) < 1.0:
+			sim.command(selected,"light_fire",sim.point(fire),int(fire.id),append)
+			return
 	for site in sim.resource_sites:
-		if sim.resource_known(site) and sim.point(site).distance_to(pos) < 1.5:
+		if sim.resource_known(site) and resource_hit(site, pos):
 			sim.command(selected, "capture", sim.point(site), int(site.id), append)
 			return
 	# Small rewards can sit beside a tall house. Hit them before the building's
 	# larger interaction footprint, otherwise the island reward cannot be clicked.
 	for c in sim.chests:
-		if sim.is_visible(sim.point(c)) and (sim.point(c) + Vector2(0, -0.2)).distance_to(pos) < 0.8:
+		if sim.is_visible(sim.point(c)) and ((sim.point(c) + Vector2(0, -0.2)).distance_to(pos) < 0.8 or prop_at_screen_position(world_to_screen(pos)) == int(c.id)):
 			sim.command(selected, "chest", pos, int(c.id), append)
 			return
 	for b in sim.buildings:
@@ -988,6 +1042,11 @@ func contextual_order(pos: Vector2, append := false) -> void:
 			sim.command(selected, order, pos, int(b.id), append)
 			return
 	sim.command(selected, "move", pos, -1, append)
+
+func resource_hit(site: Dictionary, pos: Vector2) -> bool:
+	if sim.point(site).distance_to(pos) < 1.5: return true
+	var extent := ResourceArt.resource_size(str(site.kind)) / CELL
+	return Rect2(sim.point(site) + Vector2(-extent.x * 0.5, -extent.y + 3.0 / CELL), extent).has_point(pos)
 
 func unit_hit(unit: Dictionary, pos: Vector2) -> bool:
 	return (sim.point(unit) + Vector2(0, -0.4 * Rules.visual_scale(unit.kind))).distance_to(pos) < (1.12 if unit.kind in Rules.MOUNTED else 0.72)
@@ -1034,6 +1093,23 @@ func building_at_screen_position(pos: Vector2) -> int:
 				hit = int(id)
 	return hit
 
+func prop_at_screen_position(pos: Vector2) -> int:
+	var hit := -1
+	var front := -INF
+	var views: Dictionary = tile_map.selectable_props()
+	for id in views:
+		var view: Sprite2D = views[id]
+		var prop: Dictionary = sim.entity(int(id))
+		if prop.get("kind", "") == "tree" and not sim.is_visible(sim.point(prop)): continue
+		if not is_instance_valid(view) or not view.is_visible_in_tree(): continue
+		var local := view.get_global_transform_with_canvas().affine_inverse() * pos
+		if view.get_rect().has_point(local) and view.is_pixel_opaque(local) and view.global_position.y >= front:
+			front = view.global_position.y
+			hit = int(id)
+	var building_id := building_at_screen_position(pos)
+	if building_id >= 0 and tile_map.building_views[building_id].global_position.y > front: return -1
+	return hit
+
 func update_building_feedback() -> void:
 	hovered_building = -1
 	var cursor := building_cursor
@@ -1045,17 +1121,20 @@ func update_building_feedback() -> void:
 	if selected_building >= 0:
 		var selected_structure: Dictionary = sim.entity(selected_building)
 		if not selected_structure.is_empty() and selected_structure.team != 0 and not sim.is_visible(sim.point(selected_structure)): selected_building = -1
+	if not selected.is_empty() or selected_building >= 0: selected_prop = -1
+	if not tile_map.selectable_props().has(selected_prop): selected_prop = -1
+	var hovered_prop := -1
+	if MAP_RECT.has_point(cursor) and not covered and not phase_overlay_open and not tactical_overlay.visible and not wave_intro.active:
+		hovered_prop = prop_at_screen_position(cursor)
+	if hovered_prop != -1: hovered_building = -1
 	tile_map.update_building_feedback(hovered_building, selected_building)
+	tile_map.update_prop_feedback(hovered_prop, selected_prop)
 
 func _draw() -> void:
 	draw_rect(get_viewport_rect(), FogLayer.UNEXPLORED_COLOR)
 
 func draw_world(canvas: Node2D) -> void:
 	draw_exploration(canvas)
-	for c in sim.chests:
-		if not sim.is_visible(sim.point(c)): continue
-		var p := screen_point(c)
-		canvas.draw_arc(p, 10 * zoom / CELL, 0, TAU, 20, Color(1, 0.88, 0.42, 0.65), 1)
 	for b in sim.buildings:
 		if b.team == 0 or sim.is_visible(sim.point(b)): draw_building(canvas, b)
 	for u in sim.units:
@@ -1075,61 +1154,57 @@ func draw_world(canvas: Node2D) -> void:
 		canvas.draw_rect(rect, Color(0.5, 0.9, 1, 0.12))
 		canvas.draw_rect(rect, BLUE, false, 1)
 	if mode != "select" and MAP_RECT.has_point(hover):
-		if mode in ["barracks", "well", "house", "academy"]:
+		if mode in ["barracks", "well", "house", "academy", "campfire"]:
 			var cell := map_point(hover).round()
-			var tint := BLUE if sim.construction_error(mode, cell, selected).is_empty() else RED
+			var error := sim.campfire_error(cell,selected) if mode == "campfire" else sim.construction_error(mode,cell,selected)
+			var tint := BLUE if error.is_empty() else RED
 			draw_placement_cell(canvas, cell, tint)
+		elif mode == "chop":
+			canvas.draw_line(hover + Vector2(-5,5),hover + Vector2(5,-5),GOLD,2)
 		else:
 			canvas.draw_arc(hover, 3 * zoom if mode == "freeze" else zoom, 0, TAU, 32, BLUE, 2)
 
 func draw_exploration(canvas: Node2D) -> void:
 	var scale_factor := zoom / CELL
 	for torch in sim.torch_positions():
-		var p := world_to_screen(torch)
-		var flicker := 1.0 + 0.12 * sin(Time.get_ticks_msec() * 0.009 + torch.x)
-		canvas.draw_circle(p, 18 * scale_factor * flicker, Color(1, 0.65, 0.15, 0.12))
-		canvas.draw_line(p, p + Vector2(0, -13) * scale_factor, Color("6a412c"), 4 * scale_factor)
-		canvas.draw_circle(p + Vector2(0, -15) * scale_factor, 5 * scale_factor * flicker, Color("ffab44"))
-		canvas.draw_circle(p + Vector2(0, -17) * scale_factor, 2.5 * scale_factor, Color("fff3a1"))
+		if sim.is_visible(torch): ResourceArt.draw_torch(canvas, world_to_screen(torch), scale_factor, sim.elapsed, torch.x + torch.y)
+	for tree in sim.tree_sites:
+		if tree.hp > 0 and tree.hp < tree.max_hp and sim.is_visible(sim.point(tree)):
+			rounded_bar(canvas,Rect2(screen_point(tree)+Vector2(-15,7)*scale_factor,Vector2(30,3)*scale_factor),1.0-float(tree.hp)/float(tree.max_hp),GOLD)
+	for fire in sim.campfires:
+		if not fire.complete and sim.is_visible(sim.point(fire)):
+			rounded_bar(canvas,Rect2(screen_point(fire)+Vector2(-12,6)*scale_factor,Vector2(24,3)*scale_factor),float(fire.progress)/Rules.CAMPFIRE_BUILD_SECONDS,GOLD)
 	for site in sim.resource_sites:
 		if not sim.is_visible(sim.point(site)): continue
 		var p := screen_point(site)
-		var tint := GOLD if site.kind == "gold_mine" else (BLUE if site.kind == "mana_spring" else Color("cf9eff"))
-		canvas.draw_circle(p, 17 * scale_factor, Color(0.05, 0.1, 0.13, 0.8))
-		if site.kind == "gold_mine":
-			for offset in [Vector2(-8, 2), Vector2(1, -6), Vector2(9, 4)]:
-				var center: Vector2 = p + offset * scale_factor
-				canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-6, 4) * scale_factor, center + Vector2(-3, -6) * scale_factor, center + Vector2(4, -4) * scale_factor, center + Vector2(7, 4) * scale_factor]), tint)
-		elif site.kind == "mana_spring":
-			canvas.draw_circle(p, 12 * scale_factor, Color("276b99"))
-			canvas.draw_arc(p, (7 + 2 * sin(Time.get_ticks_msec() * 0.003)) * scale_factor, 0, TAU, 24, tint, 2)
-		else:
-			canvas.draw_rect(Rect2(p + Vector2(-8, -12) * scale_factor, Vector2(16, 22) * scale_factor), Color("6b6d88"))
-			canvas.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -25) * scale_factor, p + Vector2(8, -14) * scale_factor, p + Vector2(0, -7) * scale_factor, p + Vector2(-8, -14) * scale_factor]), tint)
-		canvas.draw_arc(p, 19 * scale_factor, 0, TAU, 32, BLUE if site.team == 0 else tint, 1.5)
-		if site.capture > 0: canvas.draw_arc(p, 22 * scale_factor, -PI / 2, -PI / 2 + TAU * site.capture / 5.0, 32, Color.WHITE, 3)
-		canvas.draw_string(FONT, p + Vector2(-30, 34) * scale_factor, Simulation.RESOURCE_NAMES[site.kind] + ("·己方" if site.team == 0 else "·占领"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, tint)
+		# Only show progress while capturing; resource props have no surrounding rings.
+		if site.capture > 0 and site.capture < 5.0:
+			var bar := Rect2(p + Vector2(-16, 8) * scale_factor, Vector2(32, 3) * scale_factor)
+			rounded_bar(canvas, bar, float(site.capture) / 5.0, Color.WHITE)
 	var b: Dictionary = sim.entity(selected_building)
 	if not b.is_empty() and b.team == 0:
-		var previous := screen_point(b)
-		for rally in b.get("rally", []):
+		for rally in b.get("rally", []).slice(-1):
 			var p := world_to_screen(Vector2(rally.x, rally.y))
-			canvas.draw_dashed_line(previous, p, GOLD, 1.5, 5)
 			canvas.draw_line(p, p + Vector2(0, -18), GOLD, 2)
 			canvas.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -18), p + Vector2(12, -14), p + Vector2(0, -10)]), GOLD)
-			previous = p
+	for destination in command_markers():
+		var p := world_to_screen(destination)
+		var corners := PackedVector2Array([p + Vector2(0,-7), p + Vector2(7,0), p + Vector2(0,7), p + Vector2(-7,0), p + Vector2(0,-7)])
+		canvas.draw_polyline(corners, BLUE, 1.5)
+		canvas.draw_circle(p, 2, Color.WHITE)
+
+func command_markers() -> Array[Vector2]:
+	var markers: Array[Vector2] = []
 	for id in selected:
 		var u: Dictionary = sim.entity(int(id))
-		if u.is_empty() or not u.has("home"): continue
-		var previous := screen_point(u)
-		var orders: Array = []
-		if u.order in ["move", "attack_move"]: orders.append({"x": u.goal_x, "y": u.goal_y})
-		orders.append_array(u.get("orders", []))
-		for order in orders:
-			var p := world_to_screen(Vector2(order.x, order.y))
-			canvas.draw_dashed_line(previous, p, Color(BLUE, 0.65), 1.0, 5)
-			canvas.draw_arc(p, 4, 0, TAU, 12, BLUE, 1)
-			previous = p
+		if u.is_empty() or not u.has("home") or u.hp <= 0 or u.home != -1: continue
+		var order: Dictionary = u
+		var queued: Array = u.get("orders", [])
+		if not queued.is_empty(): order = queued.back()
+		if order.order not in ["move", "attack_move"]: continue
+		var destination := Vector2(float(order.get("marker_x", order.get("goal_x", order.x))), float(order.get("marker_y", order.get("goal_y", order.y))))
+		if not markers.has(destination): markers.append(destination)
+	return markers
 
 func draw_placement_cell(canvas: Node2D, cell: Vector2, tint: Color) -> void:
 	var rect := Rect2(world_to_screen(cell) - Vector2.ONE * zoom * 0.5, Vector2.ONE * zoom)
@@ -1176,5 +1251,53 @@ func draw_unit(canvas: Node2D, u: Dictionary) -> void:
 	health_bar(canvas, pos + Vector2(-9, 7), 18, float(u.hp) / float(u.max_hp), color)
 
 func health_bar(canvas: Node2D, pos: Vector2, width: float, ratio: float, color: Color) -> void:
-	canvas.draw_rect(Rect2(pos, Vector2(width, 3)), Color("10222c"))
-	canvas.draw_rect(Rect2(pos, Vector2(width * clampf(ratio, 0, 1), 3)), color)
+	rounded_bar(canvas, Rect2(pos, Vector2(width, 4)), ratio, color)
+
+func rounded_bar(canvas: Node2D, rect: Rect2, ratio: float, color: Color) -> void:
+	preload("res://scripts/ui/rounded_bars.gd").draw(canvas, rect, ratio, color)
+
+func open_game_menu(page := "pause") -> void:
+	if wave_intro.active: return
+	close_game_menu()
+	dragging = false
+	panning = false
+	game_menu = preload("res://scripts/ui/expedition_menu.gd").new()
+	layer.add_child(game_menu)
+	game_menu.setup(self, page)
+
+func close_game_menu() -> void:
+	if is_instance_valid(game_menu):
+		game_menu.hide()
+		game_menu.queue_free()
+	game_menu = null
+
+func order_tree_at(pos: Vector2, append := false, notify := true) -> bool:
+	var id := prop_at_screen_position(world_to_screen(pos))
+	var tree: Dictionary = sim.entity(id)
+	if tree.get("kind", "") != "tree":
+		for candidate in sim.tree_sites:
+			if candidate.hp > 0 and sim.is_visible(sim.point(candidate)) and sim.point(candidate).distance_to(pos) < 0.75:
+				tree = candidate
+				break
+	if tree.get("kind", "") != "tree" or tree.hp <= 0:
+		if notify: sim.message = "点击视野内尚未砍伐的树木。"
+		return false
+	if selected.is_empty():
+		selected_prop = int(tree.id)
+		if notify: sim.message = "已选中树木；按 T 派遣空闲部队，或先选士兵再右键伐木。"
+		return true
+	sim.command(selected,"chop",sim.point(tree),int(tree.id),append)
+	return true
+
+func dispatch_lumberjack(tree_id: int) -> void:
+	var tree: Dictionary = sim.entity(tree_id)
+	if tree.get("kind", "") != "tree" or tree.hp <= 0:
+		sim.message = "先选中一棵尚未砍伐的树木。"
+		return
+	var workers: Array = sim.idle_units().filter(func(u): return sim.reachable_goal(sim.point(u),sim.point(tree)) != Vector2i(-1,-1))
+	workers.sort_custom(func(a,b): return sim.point(a).distance_squared_to(sim.point(tree)) < sim.point(b).distance_squared_to(sim.point(tree)))
+	if workers.is_empty():
+		sim.message = "附近没有可用的空闲部队；先选择士兵，再右键树木伐木。"
+		return
+	sim.command([workers[0].id],"chop",sim.point(tree),int(tree.id))
+	sim.message = "已派遣空闲部队伐木，完成后获得 %d 木材。" % Rules.TREE_WOOD

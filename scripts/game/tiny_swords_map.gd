@@ -4,6 +4,9 @@ extends Node2D
 const Art = preload("res://scripts/data/tiny_swords_art.gd")
 const Actor = preload("res://scripts/entities/tiny_swords_actor.gd")
 const BUILDING_HIGHLIGHT = preload("res://scripts/effects/rts_building_highlight.gdshader")
+const ResourceArt = preload("res://scripts/effects/resource_art.gd")
+const TreeGeometry = preload("res://scripts/data/tree_geometry.gd")
+const TREE_TEXTURE = preload("res://assets/terrain/snow_cedars.png")
 const TILE_SIZE := 64.0
 @onready var water: TileMapLayer = $Water
 @onready var ground: TileMapLayer = $Ground
@@ -15,8 +18,59 @@ const TILE_SIZE := 64.0
 var unit_views: Dictionary = {}
 var building_views: Dictionary = {}
 var treasure_views: Dictionary = {}
+var prop_views: Dictionary = {}
+var prop_obstacle_layer: Node2D
+
+func sync_props(sim) -> void:
+	if prop_obstacle_layer == null:
+		prop_obstacle_layer = Node2D.new()
+		prop_obstacle_layer.name = "ResourceObstacles"
+		add_child(prop_obstacle_layer)
+	# Expose the authoritative navigation cells to the map/editor without drawing a debug grid.
+	prop_obstacle_layer.set_meta("blocked_cells", sim.prop_obstacles.keys())
+	var records: Array = sim.resource_sites.duplicate()
+	var fires: Array = sim.base_torch_positions()
+	for i in fires.size(): records.append({"id": -100 - i, "kind": "campfire", "team": 0, "x": fires[i].x, "y": fires[i].y})
+	for fire in sim.campfires:
+		records.append(fire)
+	var present := {}
+	for record in records:
+		var id: int = record.id
+		present[id] = true
+		if not prop_views.has(id):
+			var sprite := Sprite2D.new()
+			sprite.name = "Resource_%s" % id
+			sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			var material := ShaderMaterial.new()
+			material.shader = BUILDING_HIGHLIGHT
+			sprite.material = material
+			actors.add_child(sprite)
+			prop_views[id] = sprite
+		var view: Sprite2D = prop_views[id]
+		view.texture = ResourceArt.prop_texture(record.kind, record.team == 0)
+		view.position = ((sim.point(record) + Vector2(0.5, 0.5)) * TILE_SIZE).round()
+		view.offset = Vector2(0, -view.texture.get_height() * 0.5 + 9)
+		view.visible = sim.is_visible(sim.point(record))
+		view.modulate = Color(0.65, 0.75, 0.8, 0.45) if record.kind == "campfire" and not record.get("complete", true) else Color.WHITE
+		view.material.set_shader_parameter("prop_kind", 1 if record.kind == "gold_mine" else (2 if record.kind == "mana_spring" else 0))
+		view.material.set_shader_parameter("occupied", record.team == 0)
+		view.material.set_shader_parameter("prop_clock", sim.elapsed)
+	for id in prop_views.keys():
+		if not present.has(id):
+			prop_views[id].queue_free()
+			prop_views.erase(id)
+
+func selectable_props() -> Dictionary:
+	var result := prop_views.duplicate()
+	result.merge(treasure_views)
+	for anchor in tree_views: result[TreeGeometry.entity_id(anchor)] = tree_views[anchor]
+	return result
+
+func update_prop_feedback(hovered_id: int, selected_id: int) -> void:
+	apply_feedback(selectable_props(), hovered_id, selected_id)
 var _revision := -1
 var trees: TileMapLayer
+var tree_views: Dictionary = {}
 var curved_paths: TileMapLayer
 
 func _ready() -> void:
@@ -31,6 +85,8 @@ func _ready() -> void:
 		trees.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(trees)
 	trees.z_index = 5
+	# Keep painted anchors for terrain editing; draw trees with the actors instead.
+	trees.hide()
 	for cell in decorations.get_used_cells():
 		if decorations.get_cell_source_id(cell) != 5: continue
 		trees.set_cell(cell, 5, decorations.get_cell_atlas_coords(cell), decorations.get_cell_alternative_tile(cell))
@@ -60,12 +116,48 @@ func terrain_water_cells() -> Array[Vector2i]:
 	return cells
 
 func terrain_obstacle_cells() -> Array[Vector2i]:
-	var cells: Array[Vector2i] = trees.get_used_cells()
+	var anchors: Array[Vector2i] = trees.get_used_cells()
 	for cell in decorations.get_used_cells():
 		var data := decorations.get_cell_tile_data(cell)
 		if decorations.get_cell_source_id(cell) == 5 or (data != null and data.get_custom_data("terrain") == "tree"):
-			cells.append(cell)
+			anchors.append(cell)
+	var cells: Array[Vector2i] = []
+	for anchor in anchors:
+		var trunk := TreeGeometry.trunk_cell(anchor)
+		if not cells.has(trunk): cells.append(trunk)
 	return cells
+
+func sync_trees(sim) -> void:
+	var present := {}
+	for anchor in trees.get_used_cells():
+		present[anchor] = true
+		if not tree_views.has(anchor):
+			var view := Sprite2D.new()
+			view.name = "Tree_%s_%s" % [anchor.x, anchor.y]
+			view.texture = TREE_TEXTURE
+			view.hframes = 4
+			view.vframes = 3
+			view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			view.position = (Vector2(TreeGeometry.trunk_cell(anchor)) + Vector2(0.5, 0.5)) * TILE_SIZE
+			view.offset = TreeGeometry.SPRITE_OFFSET
+			var material := ShaderMaterial.new()
+			material.shader = BUILDING_HIGHLIGHT
+			view.material = material
+			actors.add_child(view)
+			tree_views[anchor] = view
+		var tree: Dictionary = sim.entity(TreeGeometry.entity_id(anchor))
+		var felled: bool = not tree.is_empty() and tree.hp <= 0
+		var view: Sprite2D = tree_views[anchor]
+		# Snow coverage is a stable appearance per tree, rather than an animation.
+		# Derive it from the saved anchor so loading never rerolls the landscape.
+		view.frame = 8 if felled else posmod((anchor.x*73856093) ^ (anchor.y*19349663),3)
+		# Selection samples only the current frame in the shared tree atlas.
+		var frame_pos := Vector2(view.frame % 4, floori(view.frame / 4.0)) / Vector2(4, 3)
+		view.material.set_shader_parameter("frame_bounds", Vector4(frame_pos.x, frame_pos.y, frame_pos.x + 0.25, frame_pos.y + 1.0 / 3.0))
+	for anchor in tree_views.keys():
+		if not present.has(anchor):
+			tree_views[anchor].queue_free()
+			tree_views.erase(anchor)
 
 func paint_generated(layout: Dictionary) -> void:
 	for layer_name in ["Water", "ShoreFoam", "Ground", "Paths", "Crossings", "Decorations", "Ice", "IceWalls"]:
@@ -107,6 +199,8 @@ func sync_terrain(sim) -> void:
 
 func sync(sim, delta: float, paused: bool) -> void:
 	sync_terrain(sim)
+	sync_trees(sim)
+	sync_props(sim)
 	var ids: Dictionary = {}
 	for unit in sim.units:
 		var id := int(unit.id)
@@ -170,6 +264,9 @@ func sync(sim, delta: float, paused: bool) -> void:
 			view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			actors.add_child(view)
 			treasure_views[id] = view
+			var feedback := ShaderMaterial.new()
+			feedback.shader = BUILDING_HIGHLIGHT
+			view.material = feedback
 		var view: Sprite2D = treasure_views[id]
 		view.visible = sim.is_visible(sim.point(chest))
 		view.position = (sim.point(chest) + Vector2(0.5, 0.5)) * TILE_SIZE
@@ -180,8 +277,11 @@ func sync(sim, delta: float, paused: bool) -> void:
 			treasure_views.erase(id)
 
 func update_building_feedback(hovered_id: int, selected_id: int) -> void:
-	for id in building_views:
-		var view: Sprite2D = building_views[id]
+	apply_feedback(building_views, hovered_id, selected_id)
+
+func apply_feedback(views: Dictionary, hovered_id: int, selected_id: int) -> void:
+	for id in views:
+		var view: Sprite2D = views[id]
 		var feedback := view.material as ShaderMaterial
 		if feedback == null: continue
 		var is_selected: bool = int(id) == selected_id

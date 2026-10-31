@@ -10,9 +10,20 @@ uniform vec4 outline_color : source_color = vec4(1.0, 0.82, 0.38, 1.0);
 uniform vec4 frame_bounds = vec4(0.0, 0.0, 1.0, 1.0);
 // Supplemental walking frames use a blue master; only blue cloth/armor changes team color.
 uniform int troop_palette = -1;
+// Resource props share building selection feedback, with state confined to their material.
+uniform int prop_kind = 0;
+uniform bool occupied = false;
+uniform float prop_clock = 0.0;
 
 void fragment() {
 	vec4 source = COLOR;
+	if (prop_kind == 2 && occupied && source.b > source.r * 1.25 && source.g > source.r * 1.15 && UV.y > 0.35) {
+		// Quantized UV flow keeps water on the same pixel grid as the map.
+		vec2 flow = vec2(sin(UV.y * 55.0 - prop_clock * 3.0), sin(UV.x * 29.0 + prop_clock * 2.0));
+		vec2 shifted = UV + round(flow * 1.4) * TEXTURE_PIXEL_SIZE;
+		vec4 water = texture(TEXTURE, shifted);
+		if (water.b > water.r * 1.25 && water.g > water.r * 1.15) source.rgb = water.rgb * (0.95 + 0.09 * sin(UV.y * 70.0 - prop_clock * 4.0));
+	}
 	if (troop_palette > 0 && source.b > source.r * 1.35 && source.b > source.g * 0.95 && source.b - source.r > 0.07) {
 		float value = max(source.r, max(source.g, source.b));
 		vec3 team_color = troop_palette == 1 ? vec3(1.0, 0.28, 0.22) : vec3(1.0, 0.78, 0.18);

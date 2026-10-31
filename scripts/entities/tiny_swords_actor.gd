@@ -65,10 +65,10 @@ func sync(unit: Dictionary, sim, delta: float, paused: bool) -> void:
 			movement_remaining = MOVEMENT_GRACE
 			facing = motion.normalized()
 			facing_direction = cardinal_direction(facing, facing_direction)
-	if unit.order in ["stop", "hold"] or (not moved and unit.team == 0 and unit.order == "idle"):
+	if unit.order in ["stop", "hold"] or (not moved and unit.team == 0 and unit.order == "idle" and int(unit.get("engaging_target", -1)) == -1):
 		movement_remaining = 0.0
 	var target: Dictionary = sim.entity(int(unit.target))
-	var working: bool = unit.order == "repair" and not target.is_empty() and sim.point(unit).distance_to(sim.point(target)) <= 1.5
+	var working: bool = int(unit.get("engaging_target", -1)) == -1 and unit.order in ["repair", "chop", "light_fire"] and not target.is_empty() and sim.target_distance(sim.point(unit), target) <= 1.5
 	if working:
 		movement_remaining = 0.0
 		var toward: Vector2 = sim.point(target) - sim.point(unit)

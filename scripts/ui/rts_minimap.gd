@@ -10,6 +10,7 @@ var map_rect := Rect2()
 var fog_image: Image
 var fog_texture: ImageTexture
 var fog_revision := -1
+var terrain_revision := -1
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -43,11 +44,13 @@ func _ready() -> void:
 
 func build_terrain() -> void:
 	var image := Image.create(Field.WIDTH, Field.HEIGHT, false, Image.FORMAT_RGBA8)
-	image.fill(Color("657961"))
+	image.fill(Color("a5c5d3"))
 	for cell in wet_cells: image.set_pixelv(cell, Color("30556b"))
 	for cell in game.tile_map.crossings.get_used_cells(): image.set_pixelv(cell, Color("c2af8c"))
-	for cell in game.tile_map.terrain_obstacle_cells(): image.set_pixelv(cell, Color("3f5e56"))
+	for tree in game.sim.tree_sites:
+		if tree.hp > 0: image.set_pixelv(Vector2i(game.sim.point(tree)), Color("3f5e56"))
 	terrain = ImageTexture.create_from_image(image)
+	terrain_revision = game.sim.navigation_revision
 
 func surface_point(pos: Vector2) -> Vector2:
 	return map_rect.position + (pos + Vector2(0.5, 0.5)) / Vector2(Field.WIDTH, Field.HEIGHT) * map_rect.size
@@ -82,6 +85,7 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 
 func _process(_delta: float) -> void:
+	if terrain_revision != game.sim.navigation_revision: build_terrain()
 	if is_visible_in_tree(): surface.queue_redraw()
 
 func _draw() -> void:

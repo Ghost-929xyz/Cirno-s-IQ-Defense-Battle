@@ -3,6 +3,7 @@ extends RefCounted
 const Rules = preload("res://scripts/data/rts_rules.gd")
 const Battlefield = preload("res://scripts/data/rts_battlefield.gd")
 const MapGenerator = preload("res://scripts/data/rts_map_generator.gd")
+const TreeGeometry = preload("res://scripts/data/tree_geometry.gd")
 const WIDTH := Battlefield.WIDTH
 const HEIGHT := Battlefield.HEIGHT
 const BASE_SITES := Battlefield.BASE_SITES
@@ -13,9 +14,13 @@ var chests: Array = []
 var walls: Array = []
 var bridges: Array = []
 var shots: Array = []
+var audio_events: Array = []
 var cards: Array = []
 var phase := "cards"
 var gold := float(Rules.START_GOLD)
+var wood := 0
+var tree_sites: Array = []
+var campfires: Array = []
 var baka := Rules.START_BAKA
 var tech := 1
 var tier := 1
@@ -32,6 +37,48 @@ var navigation_revision := 0
 var _painted_water: Dictionary = {}
 var _use_painted_terrain := false
 var _terrain_obstacles: Dictionary = {}
+var prop_obstacles: Dictionary = {}
+var building_obstacles: Dictionary = {}
+
+func building_cells(kind: String, pos: Vector2) -> Array[Vector2i]:
+	# Ground footprint, anchored at the sprite's feet; roofs remain Y-sorted.
+	var cells: Array[Vector2i] = []
+	var half_width := 0 if kind in ["well", "academy"] else 1
+	for y in range(-1 if kind == "base" else 0, 1):
+		for x in range(-half_width, half_width + 1):
+			cells.append(Vector2i(pos.round()) + Vector2i(x, y))
+	return cells
+
+func target_cells(target: Dictionary) -> Array[Vector2i]:
+	if target.has("complete"): return building_cells(target.kind, point(target))
+	return [Vector2i(point(target).round())]
+
+func target_distance(pos: Vector2, target: Dictionary) -> float:
+	if target.has("home") and target.home != -1:
+		var home := entity(int(target.home))
+		if not home.is_empty(): return target_distance(pos, home)
+	if not target.has("complete"): return pos.distance_to(point(target))
+	var distance := INF
+	for cell in target_cells(target): distance = minf(distance, pos.distance_to(Vector2(cell)))
+	return distance
+
+func refresh_prop_obstacles() -> void:
+	prop_obstacles.clear()
+	for site in resource_sites:
+		var cell := Vector2i(point(site).round())
+		# Wide ground footprint; the tall artwork above it is handled by Y sorting.
+		for x in range(-1, 2): prop_obstacles[cell + Vector2i(x, 0)] = true
+	for pos in torch_positions(): prop_obstacles[Vector2i(pos.round())] = true
+	for chest in chests: prop_obstacles[Vector2i(point(chest).round())] = true
+	for fire in campfires: prop_obstacles[Vector2i(point(fire).round())] = true
+
+func relocate_blocked_units() -> void:
+	for u in units:
+		if u.hp <= 0 or u.home != -1 or segment_clear(point(u), point(u), Rules.terrain_radius(u.kind)): continue
+		var free := free_unit_position(point(u), u.kind, int(u.id))
+		if free.is_finite():
+			set_point(u, free)
+			u.path_revision = -1
 var snow_cover := 0.0
 var water_frozen := false
 var map_seed := ""
@@ -62,11 +109,17 @@ func set_point(entity: Dictionary, pos: Vector2) -> void:
 	entity.x = pos.x
 	entity.y = pos.y
 
+func emit_audio(kind: String, pos: Vector2) -> void:
+	# Transient events survive catch-up steps but never enter a save file.
+	if audio_events.size() >= 96: audio_events.pop_front()
+	audio_events.append({"kind":kind,"x":pos.x,"y":pos.y})
+
 func water(cell: Vector2i) -> bool:
 	if _use_painted_terrain: return _painted_water.has(cell)
 	return Battlefield.water(cell)
 
 func configure_terrain(water_cells: Array[Vector2i], obstacle_cells: Array[Vector2i] = []) -> void:
+	tree_sites.clear()
 	_painted_water.clear()
 	for cell in water_cells: _painted_water[cell] = true
 	_use_painted_terrain = true
@@ -76,13 +129,28 @@ func configure_terrain(water_cells: Array[Vector2i], obstacle_cells: Array[Vecto
 		for x in range(33, 48):
 			if Vector2(x, y).distance_to(Battlefield.CENTRAL_BASE) <= 7:
 				_painted_water.erase(Vector2i(x, y))
-				_terrain_obstacles.erase(Vector2i(x, y))
 	rebuild_navigation()
 
 func generate_map(seed_value: int) -> void:
 	map_seed = str(seed_value)
 	generated_layout = MapGenerator.generate(seed_value)
-	configure_terrain(generated_layout.water, generated_layout.trees)
+	var trunks: Array[Vector2i] = []
+	for anchor in generated_layout.trees: trunks.append(TreeGeometry.trunk_cell(anchor))
+	configure_terrain(generated_layout.water, trunks)
+	register_trees(generated_layout.trees)
+
+func register_trees(anchors: Array) -> void:
+	var previous := {}
+	for tree in tree_sites: previous[int(tree.id)] = tree
+	tree_sites = []
+	for anchor in anchors:
+		var id := TreeGeometry.entity_id(anchor)
+		if previous.has(id):
+			tree_sites.append(previous[id])
+			continue
+		var trunk := TreeGeometry.trunk_cell(anchor)
+		tree_sites.append({"id": id, "kind": "tree", "team": -1, "x": trunk.x, "y": trunk.y, "anchor_x": anchor.x, "anchor_y": anchor.y, "hp": 60.0, "max_hp": 60.0})
+	rebuild_navigation()
 
 func inside(cell: Vector2i) -> bool:
 	return Rect2i(0, 0, WIDTH, HEIGHT).has_point(cell)
@@ -91,13 +159,21 @@ func walkable(cell: Vector2i) -> bool:
 	return inside(cell) and not navigation.is_point_solid(cell)
 
 func rebuild_navigation() -> void:
+	for tree in tree_sites:
+		var trunk := Vector2i(point(tree).round())
+		if tree.hp > 0: _terrain_obstacles[trunk] = true
+		else: _terrain_obstacles.erase(trunk)
+	refresh_prop_obstacles()
+	building_obstacles.clear()
+	for b in buildings:
+		if b.hp > 0:
+			for cell in building_cells(b.kind, point(b)): building_obstacles[cell] = true
 	for y in HEIGHT:
 		for x in WIDTH:
 			var cell := Vector2i(x, y)
 			var frozen := water_frozen and x >= 2 and y >= 2 and x < WIDTH - 2 and y < HEIGHT - 2
-			var blocked := (water(cell) and not frozen and not bridges.has([x, y])) or _terrain_obstacles.has(cell)
-			for b in buildings:
-				if b.kind == "house" and b.hp > 0 and Vector2i(point(b).round()) == cell: blocked = true
+			var blocked := (water(cell) and not frozen and not bridges.has([x, y])) or _terrain_obstacles.has(cell) or prop_obstacles.has(cell)
+			blocked = blocked or building_obstacles.has(cell)
 			for wall in walls:
 				if Vector2i(point(wall)) == cell:
 					blocked = true
@@ -145,6 +221,8 @@ func choose_base(index: int) -> bool:
 	populate_map()
 	phase = "prep"
 	populate_resources()
+	rebuild_navigation()
+	relocate_blocked_units()
 	update_visibility()
 	message = "中央营地已建立。派部队探索，右键占领金矿、魔力泉或灵视塔。"
 	return true
@@ -163,6 +241,7 @@ func populate_map() -> void:
 
 func populate_resources() -> void:
 	if not resource_sites.is_empty(): return
+	var camp_exit := Vector2i(safe_cell(Battlefield.CENTRAL_BASE))
 	var placement := RandomNumberGenerator.new()
 	placement.seed = int(map_seed) + 72931
 	for kind in ["gold_mine", "mana_spring", "vision_tower", "gold_mine", "mana_spring", "gold_mine", "vision_tower", "gold_mine", "mana_spring"]:
@@ -171,8 +250,15 @@ func populate_resources() -> void:
 			if pos.distance_to(Battlefield.CENTRAL_BASE) < 13: continue
 			if resource_sites.is_empty() and pos.distance_to(Battlefield.CENTRAL_BASE) > 18: continue
 			if not walkable(Vector2i(pos)) or water(Vector2i(pos)): continue
+			# Reserve a clear perimeter so the new footprint cannot seal a one-cell crossing.
+			var room := true
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var neighbor := Vector2i(pos) + Vector2i(dx, dy)
+					if not walkable(neighbor) or water(neighbor): room = false
+			if not room: continue
 			if (buildings + chests + resource_sites).any(func(item): return point(item).distance_to(pos) < 4): continue
-			if navigation.get_id_path(Vector2i(Battlefield.CENTRAL_BASE), Vector2i(pos)).is_empty(): continue
+			if navigation.get_id_path(camp_exit, Vector2i(pos)).is_empty(): continue
 			resource_sites.append({"id": allocate_id(), "kind": kind, "x": pos.x, "y": pos.y, "team": -1, "capture": 0.0, "capturing_team": -1, "discovered": false})
 			break
 
@@ -193,6 +279,12 @@ func reveal_circle(pos: Vector2, radius: float) -> void:
 				visible_cells[y * WIDTH + x] = true
 
 func torch_positions() -> Array:
+	var result := base_torch_positions()
+	for fire in campfires:
+		if fire.complete: result.append(point(fire))
+	return result
+
+func base_torch_positions() -> Array:
 	var result: Array = []
 	for b in buildings:
 		if b.team == 0 and b.kind == "base" and b.hp > 0:
@@ -203,7 +295,7 @@ func update_visibility() -> void:
 	visible_cells.clear()
 	for pos in torch_positions(): reveal_circle(pos, 6.0)
 	for u in living(0):
-		if u.home == -1: reveal_circle(point(u), 5.0 if u.kind != "scout" else 8.0)
+		if u.home == -1: reveal_circle(point(u), Rules.sight_radius(u.kind))
 	for b in buildings:
 		if b.team == 0 and b.hp > 0 and b.kind != "base": reveal_circle(point(b), 4.0)
 	for site in resource_sites:
@@ -218,7 +310,7 @@ func resource_known(site: Dictionary) -> bool:
 
 func step_resources(delta: float) -> void:
 	for site in resource_sites:
-		var claimants := units.filter(func(u): return u.hp > 0 and u.home == -1 and u.order == "capture" and u.target == site.id and point(u).distance_to(point(site)) <= 1.8)
+		var claimants := units.filter(func(u): return u.hp > 0 and u.home == -1 and u.order == "capture" and int(u.get("engaging_target", -1)) == -1 and u.target == site.id and point(u).distance_to(point(site)) <= 1.8)
 		if not claimants.is_empty():
 			var team: int = claimants[0].team
 			var contested := units.any(func(u): return u.hp > 0 and u.home == -1 and hostile(team, int(u.team)) and point(u).distance_to(point(site)) < 3.5)
@@ -249,14 +341,18 @@ func set_rally(building_id: int, pos: Vector2, append := false) -> bool:
 	return true
 
 func start_order(u: Dictionary, order: Dictionary) -> void:
+	clear_automatic_target(u)
 	u.order = order.order
 	u.target = int(order.get("target", -1))
 	u.goal_x = order.x
 	u.goal_y = order.y
+	u["marker_x"] = order.get("marker_x", order.x)
+	u["marker_y"] = order.get("marker_y", order.y)
 	u.path = []
 	u.path_revision = -1
 
 func finish_order(u: Dictionary) -> void:
+	clear_automatic_target(u)
 	u.order = "idle"
 	u.target = -1
 	u.path = []
@@ -279,12 +375,8 @@ func add_building(kind: String, team: int, pos: Vector2, complete := true) -> Di
 		"hp": float(rule.hp) if complete else 1.0, "max_hp": float(rule.hp),
 		"complete": complete, "queue": [], "train": 0.0, "cooldown": 0.0, "rally": []}
 	buildings.append(b)
-	if kind == "house":
-		rebuild_navigation()
-		for u in units:
-			if u.hp > 0 and u.home == -1 and not position_clear(point(u)):
-				set_point(u, free_unit_position(point(u), u.kind, int(u.id)))
-				u.path_revision = -1
+	rebuild_navigation()
+	relocate_blocked_units()
 	return b
 
 func add_unit(kind: String, team: int, pos: Vector2) -> Dictionary:
@@ -303,7 +395,7 @@ func add_unit(kind: String, team: int, pos: Vector2) -> Dictionary:
 	return u
 
 func entity(id: int) -> Dictionary:
-	for item in units + buildings + chests + resource_sites:
+	for item in units + buildings + chests + resource_sites + tree_sites + campfires:
 		if int(item.id) == id:
 			return item
 	return {}
@@ -409,6 +501,9 @@ func construction_error(kind: String, pos: Vector2, builders: Array) -> String:
 	var cell := Vector2i(pos.round())
 	if gold < cost or not walkable(cell) or water(cell):
 		return "需要足够金币，并在陆地空地上建造。"
+	for footprint_cell in building_cells(kind, Vector2(cell)):
+		if not walkable(footprint_cell) or water(footprint_cell):
+			return "建筑完整占地必须位于无障碍的陆地上。"
 	for b in buildings:
 		if point(b).distance_to(Vector2(cell)) < 2.3:
 			return "建筑之间需预留空间。"
@@ -428,6 +523,73 @@ func construct(kind: String, pos: Vector2, builders: Array, append := false) -> 
 	message = "工地已放置，单位抵达后每人每秒建造 20 点生命。"
 	return true
 
+func campfire_error(pos: Vector2, builders: Array) -> String:
+	if not active(): return "当前无法布置火堆。"
+	var eligible := builders.filter(func(id):
+		var u := entity(int(id))
+		return not u.is_empty() and u.has("home") and u.team == 0 and u.hp > 0 and u.home == -1)
+	if eligible.is_empty(): return "先选择至少一名场外部队。"
+	if wood < Rules.CAMPFIRE_WOOD: return "木材不足：右键树木伐木，火堆需要 %d 木材。" % Rules.CAMPFIRE_WOOD
+	var cell := Vector2i(pos.round())
+	if not walkable(cell) or water(cell) or not is_visible(Vector2(cell)): return "火堆须布置在视野内的陆地空地。"
+	for fire in torch_positions():
+		if fire.distance_to(Vector2(cell)) < 2: return "火堆之间请留出空间。"
+	for fire in campfires:
+		if point(fire).distance_to(Vector2(cell)) < 2: return "这里已有火堆或生火工地。"
+	for u in units:
+		if u.hp > 0 and u.home == -1 and segment_hits_cell(point(u), point(u), cell, Rules.terrain_radius(u.kind)):
+			return "火堆不能布置在部队脚下。"
+	if not eligible.any(func(id): return reachable_goal(point(entity(id)), Vector2(cell)) != Vector2i(-1,-1)):
+		return "选中的部队无法到达这里。"
+	return ""
+
+func place_campfire(pos: Vector2, builders: Array, append := false) -> bool:
+	var error := campfire_error(pos, builders)
+	if not error.is_empty():
+		message = error
+		return false
+	var cell := Vector2i(pos.round())
+	var fire := {"id": allocate_id(), "kind": "campfire", "team": 0, "x": cell.x, "y": cell.y, "complete": false, "progress": 0.0}
+	wood -= Rules.CAMPFIRE_WOOD
+	campfires.append(fire)
+	rebuild_navigation()
+	command(builders, "light_fire", Vector2(cell), int(fire.id), append)
+	message = "火堆已布置，部队抵达后生火，点燃后提供视野。"
+	return true
+
+func step_woodwork(u: Dictionary, delta: float) -> void:
+	var goal := entity(int(u.target))
+	var chopping: bool = u.order == "chop"
+	if u.team != 0 or goal.is_empty() or goal.get("kind", "") != ("tree" if chopping else "campfire"):
+		finish_order(u)
+		return
+	if (chopping and goal.hp <= 0) or (not chopping and goal.complete):
+		finish_order(u)
+		return
+	if point(u).distance_to(point(goal)) > 1.5:
+		move_unit(u, point(goal), delta)
+		return
+	u["work_audio_clock"] = float(u.get("work_audio_clock",0)) + delta
+	if u.work_audio_clock >= 0.55:
+		u.work_audio_clock = 0.0
+		emit_audio("chop",point(goal))
+	if chopping:
+		goal.hp = maxf(0, float(goal.hp) - float(goal.max_hp) / Rules.TREE_WORK_SECONDS * delta)
+		if goal.hp <= 0:
+			wood += Rules.TREE_WOOD
+			emit_audio("building_break",point(goal))
+			rebuild_navigation()
+			message = "伐木完成，获得 %d 木材。可在建造页布置火堆。" % Rules.TREE_WOOD
+			finish_order(u)
+	else:
+		goal.progress = minf(Rules.CAMPFIRE_BUILD_SECONDS, float(goal.progress) + delta)
+		if goal.progress >= Rules.CAMPFIRE_BUILD_SECONDS:
+			goal.complete = true
+			emit_audio("spell_cast",point(goal))
+			update_visibility()
+			message = "火堆已点燃，照亮周边迷雾。"
+			finish_order(u)
+
 func command(ids: Array, order: String, pos: Vector2, target := -1, append := false) -> void:
 	if not active(): return
 	var index := 0
@@ -438,13 +600,13 @@ func command(ids: Array, order: String, pos: Vector2, target := -1, append := fa
 		var goal := pos
 		if order in ["move", "attack_move"] and ids.size() > 1:
 			var columns := ceili(sqrt(float(ids.size())))
-			goal = pos + Vector2(index % columns - (columns - 1) * 0.5, index / columns) * 1.65
+			goal = pos + Vector2(index % columns - (columns - 1) * 0.5, index / columns) * 1.4
 			index += 1
 		if order in ["move", "attack_move"]:
 			goal = free_unit_position(goal, u.kind, int(u.id), reserved)
 			if not goal.is_finite(): continue
 			reserved.append({"x": goal.x, "y": goal.y, "kind": u.kind})
-		var instruction := {"order": order, "x": goal.x, "y": goal.y, "target": target}
+		var instruction := {"order": order, "x": goal.x, "y": goal.y, "target": target, "marker_x": pos.x, "marker_y": pos.y}
 		if append and (u.order not in ["idle", "stop"] or not u.get("orders", []).is_empty()):
 			u.orders.append(instruction)
 		else:
@@ -469,12 +631,14 @@ func garrison(u: Dictionary, b: Dictionary) -> bool:
 func evacuate(building_id: int) -> void:
 	var b := entity(building_id)
 	if b.is_empty(): return
-	var index := 0
 	for u in occupants(building_id):
+		var exit_pos := training_spawn_point(b, u.kind)
+		if not exit_pos.is_finite(): continue
 		u.home = -1
 		u.order = "idle"
-		set_point(u, free_unit_position(point(b) + Vector2(1 + index % 3, index / 3), u.kind, int(u.id)))
-		index += 1
+		set_point(u, exit_pos)
+		u.path = []
+		u.path_revision = -1
 
 func safe_cell(pos: Vector2) -> Vector2:
 	var cell := Vector2i(pos.round()).clamp(Vector2i.ZERO, Vector2i(WIDTH - 1, HEIGHT - 1))
@@ -489,9 +653,15 @@ func safe_cell(pos: Vector2) -> Vector2:
 func training_spawn_point(building: Dictionary, kind := "swordsman") -> Vector2:
 	# Search reachable cells outward from the producer. Occupied cells can be
 	# traversed during the search, but cannot be chosen as a spawn position.
-	var origin := Vector2i(safe_cell(point(building)))
-	var pending: Array[Vector2i] = [origin]
-	var visited := {origin: true}
+	var pending: Array[Vector2i] = []
+	var visited := {}
+	# Start at actual exterior entrances; never jump across an enclosing wall.
+	for occupied_cell in building_cells(building.kind, point(building)):
+		for offset in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
+			var entrance: Vector2i = occupied_cell + offset
+			if walkable(entrance) and not visited.has(entrance):
+				visited[entrance] = true
+				pending.append(entrance)
 	var index := 0
 	while index < pending.size():
 		var cell := pending[index]
@@ -502,7 +672,7 @@ func training_spawn_point(building: Dictionary, kind := "swordsman") -> Vector2:
 			if b.hp > 0 and point(b).distance_to(pos) < 1.5:
 				occupied = true
 				break
-		if not occupied: occupied = not unit_position_clear(pos, kind) or units.any(func(u): return u.hp > 0 and u.home == -1 and point(u).distance_to(pos) < 1.25)
+		if not occupied: occupied = not unit_position_clear(pos, kind)
 		if not occupied: return pos
 		for offset in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
 			var neighbor: Vector2i = cell + offset
@@ -543,7 +713,7 @@ func cast(spell: String, pos: Vector2) -> bool:
 			for b in buildings:
 				if point(b).distance_to(Vector2(cell)) < 1.8: occupied = true
 			for u in units:
-				if u.home == -1 and point(u).distance_to(Vector2(cell)) < 0.75: occupied = true
+				if u.hp > 0 and u.home == -1 and segment_hits_cell(point(u), point(u), cell, Rules.terrain_radius(u.kind)): occupied = true
 			if not occupied: cells.append(cell)
 		if cells.is_empty():
 			message = "冰墙需要空地，不能覆盖单位或建筑。"
@@ -552,7 +722,9 @@ func cast(spell: String, pos: Vector2) -> bool:
 		for u in units:
 			if u.team != 0 and u.home == -1 and point(u).distance_to(pos) <= 2: u.frozen = 2.0
 	baka -= cost
+	emit_audio("frost_hit" if spell == "freeze" else "spell_cast",pos)
 	rebuild_navigation()
+	relocate_blocked_units()
 	return true
 
 func start_wave() -> void:
@@ -617,7 +789,9 @@ func update_winter(delta: float) -> void:
 	if not water_frozen:
 		for u in units:
 			if u.hp <= 0 or u.home != -1 or segment_clear(point(u), point(u), Rules.terrain_radius(u.kind)): continue
-			set_point(u, free_unit_position(nearest_shore(point(u)), u.kind, int(u.id)))
+			var shore := free_unit_position(nearest_shore(point(u)), u.kind, int(u.id))
+			if not shore.is_finite(): continue
+			set_point(u, shore)
 			u.path_revision = -1
 			if u.order == "move" and not position_clear(Vector2(u.goal_x, u.goal_y)):
 				var goal := safe_cell(Vector2(u.goal_x, u.goal_y))
@@ -642,7 +816,7 @@ func enemy_build_site(desired: Vector2) -> Vector2:
 		for y in range(-radius, radius + 1):
 			for x in range(-radius, radius + 1):
 				var pos := desired + Vector2(x, y)
-				if not walkable(Vector2i(pos)) or water(Vector2i(pos)): continue
+				if building_cells("outpost", pos).any(func(cell): return not walkable(cell) or water(cell)): continue
 				if buildings.any(func(b): return b.hp > 0 and point(b).distance_to(pos) < 2.3): continue
 				return pos
 	return Vector2(-1, -1)
@@ -724,6 +898,8 @@ func step_building(b: Dictionary, delta: float) -> void:
 
 func step_unit(u: Dictionary, delta: float) -> void:
 	var d: Dictionary = catalog[u.kind]
+	u["engaging_target"] = -1
+	u["auto_clock"] = maxf(0, float(u.get("auto_clock", 0)) - delta)
 	u.cooldown = maxf(0, u.cooldown - delta)
 	u.special = maxf(0, u.special - delta)
 	u.frozen = maxf(0, u.frozen - delta)
@@ -732,22 +908,43 @@ func step_unit(u: Dictionary, delta: float) -> void:
 	if u.rank == 2: u.hp = minf(u.max_hp, u.hp + u.max_hp * 0.02 * delta)
 	if u.home != -1:
 		if not u.get("orders", []).is_empty():
-			var exit_pos := free_unit_position(point(u) + Vector2(2, 0), u.kind, int(u.id))
+			var home := entity(int(u.home))
+			var exit_pos := training_spawn_point(home, u.kind) if not home.is_empty() else free_unit_position(point(u), u.kind, int(u.id))
 			if exit_pos.is_finite():
 				u.home = -1
 				set_point(u, exit_pos)
 				finish_order(u)
 		return
+	# Also correct stationary/frozen units after terrain or old-save changes.
+	if not segment_clear(point(u), point(u), Rules.terrain_radius(u.kind)):
+		var safe := free_unit_position(point(u), u.kind, int(u.id))
+		if not safe.is_finite(): return
+		set_point(u, safe)
+		u.path = []
+		u.path_revision = -1
 	if u.frozen > 0: return
 	if u.kind == "paladin":
 		for ally in units:
 			if ally.team == u.team and ally.home == -1 and ally.hp > 0 and point(ally).distance_to(point(u)) <= 2:
 				ally.hp = minf(ally.max_hp, ally.hp + 3 * delta)
+	# Engage without replacing the current task, route destination or Shift queue.
+	# Explicit attacks on troops retain their focus; a march toward a structure
+	# may first deal with nearby defenders. Hold and stop never initiate a chase.
+	var explicit_target := entity(int(u.target)) if u.order == "attack" else {}
+	if u.team == 0 and u.order not in ["hold", "stop"] and (u.order != "attack" or explicit_target.has("complete")):
+		var encounter := automatic_target(u)
+		if not encounter.is_empty():
+			u.engaging_target = int(encounter.id)
+			step_engagement(u, encounter, delta, false)
+			return
+	if u.order in ["chop", "light_fire"]:
+		step_woodwork(u, delta)
+		return
 	if u.order in ["repair", "garrison", "chest", "capture"]:
 		var goal := entity(int(u.target))
 		if goal.is_empty() or (goal.has("hp") and goal.hp <= 0):
 			finish_order(u)
-		elif point(u).distance_to(point(goal)) > 1.5:
+		elif target_distance(point(u), goal) > 1.5:
 			move_unit(u, point(goal), delta)
 			return
 		else:
@@ -778,7 +975,7 @@ func step_unit(u: Dictionary, delta: float) -> void:
 			destination = Vector2(redirected)
 			u.goal_x = destination.x
 			u.goal_y = destination.y
-		if point(u).distance_to(destination) < 0.3:
+		if point(u).distance_to(destination) < 0.08:
 			finish_order(u)
 			return
 		else:
@@ -794,20 +991,25 @@ func step_unit(u: Dictionary, delta: float) -> void:
 		elif sniper and target.has("complete"):
 			var defenders := occupants(int(target.id))
 			if not defenders.is_empty(): target = defenders[0]
-	var stationary: bool = u.order in ["hold", "stop"] or (u.team == 0 and u.order == "idle")
+	var stationary: bool = u.order in ["hold", "stop"]
 	var stationary_reach := float(d.range) if d.ranged else maxf(float(d.range), Rules.body_radius(u.kind) + 0.70 + 0.12)
 	var search_radius := stationary_reach if stationary else (6.0 if u.team == 0 else (10.0 if u.team != 2 else 4.0))
-	if target.is_empty(): target = nearest_target(u, search_radius, sniper)
+	if target.is_empty() and (u.team != 0 or stationary): target = nearest_target(u, search_radius, sniper)
 	if target.is_empty() and u.team == 1: target = raid_target(u, sniper)
 	if target.is_empty():
 		if u.order == "attack_move":
 			var destination := Vector2(u.goal_x, u.goal_y)
-			if point(u).distance_to(destination) < 0.3: finish_order(u)
+			if point(u).distance_to(destination) < 0.08: finish_order(u)
 			elif reachable_goal(point(u), destination) == Vector2i(-1, -1): finish_order(u)
 			else: move_unit(u, destination, delta)
 		return
+	u.engaging_target = int(target.id)
+	step_engagement(u, target, delta, stationary)
+
+func step_engagement(u: Dictionary, target: Dictionary, delta: float, stationary: bool) -> void:
+	var d: Dictionary = catalog[u.kind]
 	u.combat_until = elapsed + 2.0
-	var distance := point(u).distance_to(point(target))
+	var distance := target_distance(point(u), target)
 	if not stationary and u.kind == "hermit_blink" and u.special <= 0 and distance > 1 and distance <= 2 and target.has("home") and target.home == -1 and walkable(Vector2i(point(target).round())):
 		var landing := free_unit_position(point(target), u.kind, int(u.id))
 		if landing.is_finite():
@@ -827,6 +1029,53 @@ func step_unit(u: Dictionary, delta: float) -> void:
 		hit(u, target, float(u.attack), bool(d.ranged))
 		var slow_factor := 1.0 - float(u.slow) if u.slow_time > 0 else 1.0
 		u.cooldown = 1.0 / (float(d.attack_speed) * slow_factor)
+
+func clear_automatic_target(u: Dictionary) -> void:
+	u["auto_target"] = -1
+	u["engaging_target"] = -1
+	u["auto_clock"] = 0.0
+	u["auto_revision"] = -1
+
+func automatic_target_visible(u: Dictionary, target: Dictionary) -> bool:
+	if target.is_empty() or target.hp <= 0 or not hostile(int(u.team), int(target.team)): return false
+	if not is_visible(point(target)): return false
+	if target.has("home") and target.home != -1 and u.kind not in ["sniper", "sniper_plus"]: return false
+	var radius := Rules.sight_radius(u.kind)
+	if catalog[u.kind].ranged and target.kind in ["hermit", "hermit_dodge", "hermit_blink"]: radius *= 0.6
+	return point(u).distance_squared_to(point(target)) <= radius * radius
+
+func automatic_target_reachable(u: Dictionary, target: Dictionary) -> bool:
+	var reach := float(catalog[u.kind].range) + (0.7 if target.has("complete") else 0.0)
+	if target.has("home") and not catalog[u.kind].ranged:
+		reach = maxf(reach, Rules.body_radius(u.kind) + Rules.body_radius(target.kind) + 0.12)
+	if target_distance(point(u), target) <= reach: return true
+	if segment_clear(point(u), point(target), Rules.terrain_radius(u.kind)): return true
+	return reachable_goal(point(u), point(target)) != Vector2i(-1, -1)
+
+func automatic_target(u: Dictionary) -> Dictionary:
+	var cached := entity(int(u.get("auto_target", -1)))
+	var cached_visible := automatic_target_visible(u, cached)
+	var rescan := float(u.get("auto_clock", 0)) <= 0 or int(u.get("auto_revision", -1)) != navigation_revision
+	if not rescan:
+		if cached_visible: return cached
+		if cached.is_empty() and int(u.get("auto_target", -1)) == -1: return {}
+	# Keep a reachable troop target until it dies or leaves sight; this prevents
+	# oscillation between equally close enemies as the formation moves.
+	u["auto_clock"] = 0.25
+	u["auto_revision"] = navigation_revision
+	if cached_visible and cached.has("home") and automatic_target_reachable(u, cached): return cached
+	var candidates: Array = units.filter(func(target): return automatic_target_visible(u, target))
+	if u.order in ["idle", "attack_move"]:
+		candidates.append_array(buildings.filter(func(target): return automatic_target_visible(u, target)))
+	candidates.sort_custom(func(a, b):
+		if a.has("home") != b.has("home"): return a.has("home")
+		return target_distance(point(u), a) < target_distance(point(u), b))
+	for target in candidates:
+		if not automatic_target_reachable(u, target): continue
+		u.auto_target = int(target.id)
+		return target
+	u.auto_target = -1
+	return {}
 
 func hostile(a: int, b: int) -> bool:
 	return b >= 0 and a != b
@@ -861,7 +1110,7 @@ func nearest_target(source: Dictionary, radius: float, sniper: bool, buildings_o
 		if source.team == 0 and not is_visible(point(target)): continue
 		if buildings_only and target.has("home"): continue
 		if target.has("home") and target.home != -1 and not sniper: continue
-		var current := point(source).distance_to(point(target))
+		var current := target_distance(point(source), target)
 		var detection := radius
 		var ranged_source: bool = source.has("complete") or (source.has("kind") and catalog.has(source.kind) and catalog[source.kind].ranged)
 		if ranged_source and target.kind in ["hermit", "hermit_dodge", "hermit_blink"]: detection *= 0.6
@@ -876,13 +1125,18 @@ func reachable_goal(source: Vector2, destination: Vector2) -> Vector2i:
 	if not walkable(start): start = Vector2i(safe_cell(source))
 	if walkable(finish):
 		return finish if not navigation.get_id_path(start, finish).is_empty() else Vector2i(-1, -1)
-	# Building interactions end at a reachable entrance instead of routing into
-	# the house itself. Try every adjacent entrance before declaring it isolated.
+	# All entrances around the full footprint, including the rear of a castle.
+	var footprint: Array[Vector2i] = [finish]
+	for b in buildings:
+		if b.hp > 0 and building_cells(b.kind, point(b)).has(finish):
+			footprint = building_cells(b.kind, point(b))
+			break
 	var entrances: Array[Vector2i] = []
-	for y in range(-1, 2):
-		for x in range(-1, 2):
-			var cell := finish + Vector2i(x, y)
-			if walkable(cell): entrances.append(cell)
+	for occupied_cell in footprint:
+		for y in range(-1, 2):
+			for x in range(-1, 2):
+				var cell := occupied_cell + Vector2i(x, y)
+				if walkable(cell) and not entrances.has(cell): entrances.append(cell)
 	entrances.sort_custom(func(a, b): return source.distance_squared_to(Vector2(a)) < source.distance_squared_to(Vector2(b)))
 	for cell in entrances:
 		if not navigation.get_id_path(start, cell).is_empty(): return cell
@@ -907,6 +1161,7 @@ func segment_hits_cell(start: Vector2, finish: Vector2, cell: Vector2i, radius :
 	return true
 
 func segment_clear(start: Vector2, finish: Vector2, radius := 0.16) -> bool:
+	if not start.is_finite() or not finish.is_finite(): return false
 	var samples := maxi(1, ceili(start.distance_to(finish) * 2.0))
 	var checked := {}
 	for i in samples + 1:
@@ -926,10 +1181,8 @@ func unit_position_clear(pos: Vector2, kind: String, except_id := -1, reserved: 
 	if not pos.is_finite() or not segment_clear(pos, pos, Rules.terrain_radius(kind)): return false
 	for other in units:
 		if other.hp <= 0 or other.home != -1 or int(other.id) == except_id: continue
-		if Vector2i(pos.round()) == Vector2i(point(other).round()): return false
 		if pos.distance_squared_to(point(other)) < pow(Rules.body_radius(kind) + Rules.body_radius(other.kind), 2) - 0.00001: return false
 	for other in reserved:
-		if Vector2i(pos.round()) == Vector2i(point(other).round()): return false
 		if pos.distance_to(point(other)) < Rules.body_radius(kind) + Rules.body_radius(other.kind): return false
 	return true
 
@@ -951,7 +1204,9 @@ func free_unit_position(pos: Vector2, kind: String, except_id := -1, reserved: A
 	return Vector2.INF
 
 func unit_motion_clear(u: Dictionary, destination: Vector2) -> bool:
-	var origin := point(u)
+	return unit_segment_clear(u, point(u), destination)
+
+func unit_segment_clear(u: Dictionary, origin: Vector2, destination: Vector2) -> bool:
 	if not segment_clear(origin, destination, Rules.terrain_radius(u.kind)): return false
 	if not unit_position_clear(destination, u.kind, int(u.id)): return false
 	# Swept bodies prevent crossing through another unit during a large step.
@@ -963,6 +1218,7 @@ func unit_motion_clear(u: Dictionary, destination: Vector2) -> bool:
 	return true
 
 func replan_around_units(u: Dictionary, destination: Vector2) -> void:
+	if replan_local_bodies(u, destination): return
 	var start := Vector2i(point(u).round())
 	var marked: Array[Vector2i] = []
 	# Temporarily reserve other bodies in the existing grid. Restore the grid
@@ -975,7 +1231,7 @@ func replan_around_units(u: Dictionary, destination: Vector2) -> void:
 			for x in range(-2, 3):
 				var cell := center + Vector2i(x, y)
 				if cell == start or not walkable(cell): continue
-				if cell == center or Vector2(cell).distance_to(point(other)) < clearance:
+				if Vector2(cell).distance_to(point(other)) < clearance:
 					navigation.set_point_solid(cell, true)
 					marked.append(cell)
 	var finish := Vector2i(destination.round())
@@ -999,7 +1255,16 @@ func replan_around_units(u: Dictionary, destination: Vector2) -> void:
 	for cell in marked: navigation.set_point_solid(cell, false)
 	if route.size() < 2: return
 	u.path = []
-	for i in range(1, route.size()): u.path.append([route[i].x, route[i].y])
+	var anchor := point(u)
+	var index := 1
+	while index < route.size():
+		var furthest := index
+		for next in range(index, route.size()):
+			if not unit_segment_clear(u, anchor, Vector2(route[next])): break
+			furthest = next
+		anchor = Vector2(route[furthest])
+		u.path.append([anchor.x, anchor.y])
+		index = furthest + 1
 	if finish == Vector2i(destination.round()) and segment_clear(Vector2(finish), destination, Rules.terrain_radius(u.kind)):
 		u.path.append([destination.x, destination.y])
 
@@ -1012,7 +1277,11 @@ func move_unit(u: Dictionary, destination: Vector2, delta: float) -> void:
 		set_point(u, free)
 		start = Vector2i(point(u))
 	var requested := Vector2i(destination.round())
-	if u.path_revision != navigation_revision or u.path_goal != [requested.x, requested.y] or u.path.is_empty():
+	if unit_motion_clear(u, destination):
+		u.path = [[destination.x, destination.y]]
+		u.path_revision = navigation_revision
+		u.path_goal = [requested.x, requested.y]
+	elif u.path_revision != navigation_revision or u.path_goal != [requested.x, requested.y] or u.path.is_empty():
 		u.path = []
 		if segment_clear(point(u), destination, terrain_radius):
 			u.path.append([destination.x, destination.y])
@@ -1060,7 +1329,7 @@ func move_unit(u: Dictionary, destination: Vector2, delta: float) -> void:
 		# Slide around bodies without changing the terrain path or crossing walls.
 		var direction := (target - point(u)).normalized()
 		var moved := false
-		for angle in [PI / 4, -PI / 4, PI / 2, -PI / 2]:
+		for angle in [PI / 6, -PI / 6, PI / 4, -PI / 4, PI / 2, -PI / 2]:
 			var candidate := point(u) + direction.rotated(angle) * minf(speed * delta, point(u).distance_to(target))
 			if unit_motion_clear(u, candidate):
 				next_position = candidate
@@ -1089,10 +1358,13 @@ func hit(attacker: Dictionary, target: Dictionary, amount: float, ranged: bool) 
 		if nearby.is_empty(): attack_alerts.append({"x": target.x, "y": target.y, "until": elapsed + 6.0})
 		else: nearby[0].until = elapsed + 6.0
 	shots.append({"x": attacker.x, "y": attacker.y, "tx": target.x, "ty": target.y, "ttl": 0.15, "team": attacker.team, "attacker_id": attacker.id, "ranged": ranged})
+	if ranged: emit_audio("arrow_release",point(attacker))
+	emit_audio("frost_hit" if attacker.kind in ["ice_archer","ice_archer_plus"] else ("arrow_hit" if ranged else "melee_hit"),point(target))
 	if target.has("home") and attacker.kind in ["ice_archer", "ice_archer_plus"]:
 		target.slow = 0.3 if attacker.kind == "ice_archer_plus" else 0.2
 		target.slow_time = 3.0
 	if target.hp <= 0:
+		emit_audio("unit_down" if target.has("home") else "building_break",point(target))
 		if target.has("home"):
 			var value := float(catalog[target.kind].cost)
 			credit_kill(attacker, value)
@@ -1103,8 +1375,8 @@ func hit(attacker: Dictionary, target: Dictionary, amount: float, ranged: bool) 
 					attacker.hp = minf(attacker.max_hp, attacker.hp + attacker.max_hp * Rules.WILDLIFE_HEAL_RATIO)
 					message = "野怪奖励：金币、15 BAKA、等价经验，击杀者恢复 25% 生命。"
 		else:
+			rebuild_navigation()
 			evacuate(int(target.id))
-			if target.kind == "house": rebuild_navigation()
 			if attacker.team == 0: gold += 80
 		if target.team == 0: check_outcome()
 
@@ -1121,6 +1393,7 @@ func credit_kill(unit: Dictionary, value: float) -> void:
 func open_chest(chest: Dictionary, unit: Dictionary) -> void:
 	if not chests.has(chest) or unit.team != 0 or unit.hp <= 0 or unit.home != -1: return
 	chests.erase(chest)
+	rebuild_navigation()
 	gold += 180 * (1.5 if cards.has("scavenger") else 1.0)
 	baka = minf(300, baka + 25)
 	credit_kill(unit, float(catalog[unit.kind].cost) * 3 + 1)
@@ -1162,6 +1435,8 @@ func next_battle() -> bool:
 		if not wildlife_alive_at(pos):
 			add_unit("swordsman", 2, pos)
 	message = "第 %d 场远征，上一场部队与建筑保留。" % campaign
+	rebuild_navigation()
+	relocate_blocked_units()
 	return true
 
 func snapshot() -> Dictionary:
@@ -1172,9 +1447,11 @@ func snapshot() -> Dictionary:
 		"bridges": bridges.duplicate(true), "snow_cover": snow_cover, "water_frozen": water_frozen,
 		"map_seed": map_seed, "map_generator_version": 2, "exploration_version": 1,
 		"resource_sites": resource_sites.duplicate(true), "explored_cells": explored_cells.keys(), "control_groups": control_groups.duplicate(true),
+		"wood": wood, "tree_sites": tree_sites.duplicate(true), "campfires": campfires.duplicate(true),
 		"rng_state": str(rng.state), "rng_seed": str(rng.seed)}
 
 func restore(data: Dictionary) -> bool:
+	audio_events.clear()
 	if data.get("mode") != "rts" or int(data.get("rts_version", 0)) != 1: return false
 	var saved_seed := str(data.get("map_seed", ""))
 	if not saved_seed.is_empty():
@@ -1196,6 +1473,10 @@ func restore(data: Dictionary) -> bool:
 		_use_painted_terrain = false
 	for key in ["phase", "gold", "baka", "tech", "tier", "wave", "campaign", "timer", "elapsed", "next_id", "cards", "units", "buildings", "chests", "walls", "bridges"]:
 		set(key, data[key].duplicate(true) if data[key] is Array or data[key] is Dictionary else data[key])
+	resource_sites = data.get("resource_sites", []).duplicate(true)
+	wood = maxi(0, int(data.get("wood", 0)))
+	tree_sites = data.get("tree_sites", tree_sites).duplicate(true)
+	campfires = data.get("campfires", []).duplicate(true)
 	unlocked_units = ["swordsman", "archer"]
 	if data.has("unlocked_units"):
 		for kind in data.unlocked_units:
@@ -1213,6 +1494,7 @@ func restore(data: Dictionary) -> bool:
 	water_frozen = bool(data.get("water_frozen", false)) and snow_cover > 0.4
 	for u in units:
 		if not u.has("orders"): u.orders = []
+		clear_automatic_target(u)
 		if not u.has("combat_until"): u.combat_until = 0.0
 		if int(data.get("feedback_version", 0)) < 1:
 			var ratio := float(u.hp) / maxf(1, float(u.max_hp))
@@ -1249,7 +1531,6 @@ func restore(data: Dictionary) -> bool:
 		if seen_chests.has(cell): return false
 		seen_chests[cell] = true
 		return true)
-	resource_sites = data.get("resource_sites", []).duplicate(true)
 	if phase not in ["cards", "base"]: populate_resources()
 	explored_cells.clear()
 	for key in data.get("explored_cells", []): explored_cells[int(key)] = true
@@ -1258,6 +1539,8 @@ func restore(data: Dictionary) -> bool:
 	for b in buildings:
 		if not b.has("rally"): b.rally = []
 	if phase == "base": choose_base(0)
+	rebuild_navigation()
+	relocate_blocked_units()
 	update_visibility()
 	return true
 
@@ -1283,3 +1566,67 @@ func migrate_legacy_map() -> void:
 			if not home.is_empty(): set_point(u, point(home))
 		u.path = []
 		u.path_revision = -1
+
+func replan_local_bodies(u: Dictionary, destination: Vector2) -> bool:
+	# Try actual gaps between neighbouring bodies before quantizing a local grid.
+	var nearby := units.filter(func(other): return other.hp > 0 and other.home == -1 and other.id != u.id and point(other).distance_to(point(u)) < 4)
+	var passages: Array[Vector2] = []
+	for i in nearby.size():
+		for j in range(i+1,nearby.size()):
+			var a := point(nearby[i])
+			var b := point(nearby[j])
+			var ra := Rules.body_radius(u.kind) + Rules.body_radius(nearby[i].kind)
+			var rb := Rules.body_radius(u.kind) + Rules.body_radius(nearby[j].kind)
+			var gap := a.distance_to(b) - ra - rb
+			if gap < 0.01 or gap > 1.5: continue
+			var along := (b-a).normalized()
+			var middle := a + along * (ra + gap * 0.5)
+			var across := Vector2(-along.y,along.x) * (maxf(ra,rb)+0.15)
+			passages.append(middle + across)
+			passages.append(middle - across)
+	passages.sort_custom(func(a,b): return point(u).distance_to(a) + a.distance_to(destination) < point(u).distance_to(b) + b.distance_to(destination))
+	for passage in passages:
+		if unit_segment_clear(u,point(u),passage) and unit_segment_clear(u,passage,destination):
+			u.path = [[passage.x,passage.y],[destination.x,destination.y]]
+			return true
+	# Resolve tight formations at quarter-cell precision only when obstructed.
+	# The terrain grid remains authoritative; every shortcut uses swept bodies.
+	var grid := AStarGrid2D.new()
+	grid.region = Rect2i(-12,-12,25,25)
+	grid.cell_size = Vector2.ONE * 0.25
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	grid.update()
+	var origin := point(u)
+	var candidates: Array[Vector2i] = []
+	for y in range(-12,13):
+		for x in range(-12,13):
+			var cell := Vector2i(x,y)
+			var pos := origin + Vector2(cell) * 0.25
+			var clear := unit_position_clear(pos,u.kind,u.id)
+			grid.set_point_solid(cell,not clear)
+			if clear and cell != Vector2i.ZERO: candidates.append(cell)
+	grid.set_point_solid(Vector2i.ZERO,false)
+	candidates.sort_custom(func(a,b): return (origin + Vector2(a)*0.25).distance_squared_to(destination) < (origin + Vector2(b)*0.25).distance_squared_to(destination))
+	var route: Array[Vector2i] = []
+	for cell in candidates:
+		if (origin + Vector2(cell)*0.25).distance_to(destination) >= origin.distance_to(destination) - 0.1: break
+		route = grid.get_id_path(Vector2i.ZERO,cell)
+		if route.size() > 1: break
+	if route.size() < 2: return false
+	var path: Array = []
+	var anchor := origin
+	var index := 1
+	while index < route.size():
+		var furthest := -1
+		for next in range(index,route.size()):
+			if not unit_segment_clear(u,anchor,origin + Vector2(route[next])*0.25): break
+			furthest = next
+		if furthest < 0: return false
+		anchor = origin + Vector2(route[furthest])*0.25
+		path.append([anchor.x,anchor.y])
+		index = furthest + 1
+	if unit_segment_clear(u,anchor,destination): path.append([destination.x,destination.y])
+	u.path = path
+	return true
