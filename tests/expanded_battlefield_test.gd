@@ -34,7 +34,7 @@ func run() -> void:
 	s.choose_card("mana")
 	s.choose_card("supplies")
 	s.choose_base(1)
-	check(s.cast("bridge", Vector2(51, 25)) and not s.navigation.get_id_path(Vector2i(50, 25), Vector2i(54, 25)).is_empty(), "One ice bridge opens island")
+	check(s.cast("bridge", Vector2(51, 25)) and s.reachable_goal(Vector2(50, 25), Vector2(54, 25)) != Vector2i(-1, -1), "One ice bridge opens a reachable approach to the island treasure")
 	for kind in s.catalog:
 		# Measure each speed in isolation; bodies now prevent stacking.
 		s.units.clear()

@@ -24,7 +24,7 @@ func run() -> void:
 	game.sim.choose_base(1)
 	await process_frame
 	check(game.MAP_RECT.size == Vector2(1180, 660), "Battlefield extends behind floating HUD")
-	check(game.resource_labels.size() == 5 and game.resource_labels.gold.get_theme_font("font") is FontVariation, "Resources use separate bold floating numbers")
+	check(game.resource_labels.size() == 6 and game.resource_labels.has("wood") and game.resource_labels.gold.get_theme_font("font") is FontVariation, "Resources including wood use separate bold floating numbers")
 	check(game.pause_button.text.is_empty() and game.pause_button.icon_name == "pause", "Top right pause is a flat icon")
 	game.toggle_pause()
 	check(game.pause_button.icon_name == "play", "Pause icon changes to resume")

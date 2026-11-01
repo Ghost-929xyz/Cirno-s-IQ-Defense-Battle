@@ -350,6 +350,9 @@ func start_order(u: Dictionary, order: Dictionary) -> void:
 	u["marker_y"] = order.get("marker_y", order.y)
 	u.path = []
 	u.path_revision = -1
+	u["blocked_time"] = 0.0
+	u["progress_goal"] = []
+	u["yield_time"] = 0.0
 
 func finish_order(u: Dictionary) -> void:
 	clear_automatic_target(u)
@@ -605,6 +608,9 @@ func command(ids: Array, order: String, pos: Vector2, target := -1, append := fa
 		if order in ["move", "attack_move"]:
 			goal = free_unit_position(goal, u.kind, int(u.id), reserved)
 			if not goal.is_finite(): continue
+			if reachable_goal(point(u), goal) == Vector2i(-1, -1):
+				message = "目标不可达，请选择连通的陆地或先建造冰桥。"
+				continue
 			reserved.append({"x": goal.x, "y": goal.y, "kind": u.kind})
 		var instruction := {"order": order, "x": goal.x, "y": goal.y, "target": target, "marker_x": pos.x, "marker_y": pos.y}
 		if append and (u.order not in ["idle", "stop"] or not u.get("orders", []).is_empty()):
@@ -633,14 +639,16 @@ func evacuate(building_id: int) -> void:
 	if b.is_empty(): return
 	for u in occupants(building_id):
 		var exit_pos := training_spawn_point(b, u.kind)
-		if not exit_pos.is_finite(): continue
+		if not exit_pos.is_finite():
+			message = "建筑出口被堵住，请先清理出口。"
+			continue
 		u.home = -1
-		u.order = "idle"
 		set_point(u, exit_pos)
-		u.path = []
 		u.path_revision = -1
+		finish_order(u)
 
 func safe_cell(pos: Vector2) -> Vector2:
+	if not pos.is_finite(): return Vector2.INF
 	var cell := Vector2i(pos.round()).clamp(Vector2i.ZERO, Vector2i(WIDTH - 1, HEIGHT - 1))
 	if walkable(cell): return Vector2(cell)
 	for radius in range(1, WIDTH):
@@ -648,7 +656,7 @@ func safe_cell(pos: Vector2) -> Vector2:
 			for x in range(-radius, radius + 1):
 				var candidate := cell + Vector2i(x, y)
 				if walkable(candidate): return Vector2(candidate)
-	return Vector2.ZERO
+	return Vector2.INF
 
 func training_spawn_point(building: Dictionary, kind := "swordsman") -> Vector2:
 	# Search reachable cells outward from the producer. Occupied cells can be
@@ -770,8 +778,10 @@ func assign_enemy_occupation(u: Dictionary) -> bool:
 func spawn_weak_raid() -> void:
 	for b in buildings:
 		if b.team == 1 and b.complete and b.hp > 0:
-			var raider := add_unit("swordsman", 1, safe_cell(point(b) + Vector2(-1, 0)))
-			raider.assault_wave = wave
+			var spawn := training_spawn_point(b)
+			if not spawn.is_finite(): continue
+			var raider := add_unit("swordsman", 1, spawn)
+			if not raider.is_empty(): raider.assault_wave = wave
 
 func snowing() -> bool:
 	return phase in ["defense", "cleanup"] and units.any(func(u):
@@ -907,8 +917,8 @@ func step_unit(u: Dictionary, delta: float) -> void:
 	u.raid_clock = maxf(0, float(u.get("raid_clock", 0)) - delta)
 	if u.rank == 2: u.hp = minf(u.max_hp, u.hp + u.max_hp * 0.02 * delta)
 	if u.home != -1:
-		if not u.get("orders", []).is_empty():
-			var home := entity(int(u.home))
+		var home := entity(int(u.home))
+		if not u.get("orders", []).is_empty() or home.is_empty() or home.hp <= 0:
 			var exit_pos := training_spawn_point(home, u.kind) if not home.is_empty() else free_unit_position(point(u), u.kind, int(u.id))
 			if exit_pos.is_finite():
 				u.home = -1
@@ -966,15 +976,10 @@ func step_unit(u: Dictionary, delta: float) -> void:
 				finish_order(u)
 			return
 	if u.order == "move":
-		var destination := Vector2(u.goal_x, u.goal_y)
-		if not position_clear(destination):
-			var redirected := reachable_goal(point(u), destination)
-			if redirected == Vector2i(-1, -1):
-				finish_order(u)
-				return
-			destination = Vector2(redirected)
-			u.goal_x = destination.x
-			u.goal_y = destination.y
+		var destination := movement_destination(u)
+		if not destination.is_finite():
+			finish_order(u)
+			return
 		if point(u).distance_to(destination) < 0.08:
 			finish_order(u)
 			return
@@ -998,9 +1003,8 @@ func step_unit(u: Dictionary, delta: float) -> void:
 	if target.is_empty() and u.team == 1: target = raid_target(u, sniper)
 	if target.is_empty():
 		if u.order == "attack_move":
-			var destination := Vector2(u.goal_x, u.goal_y)
-			if point(u).distance_to(destination) < 0.08: finish_order(u)
-			elif reachable_goal(point(u), destination) == Vector2i(-1, -1): finish_order(u)
+			var destination := movement_destination(u)
+			if not destination.is_finite() or point(u).distance_to(destination) < 0.08: finish_order(u)
 			else: move_unit(u, destination, delta)
 		return
 	u.engaging_target = int(target.id)
@@ -1119,10 +1123,26 @@ func nearest_target(source: Dictionary, radius: float, sniper: bool, buildings_o
 			best = target
 	return best
 
+func movement_destination(u: Dictionary) -> Vector2:
+	var destination := Vector2(u.goal_x, u.goal_y)
+	var clear := segment_clear(destination, destination, Rules.terrain_radius(u.kind))
+	if not clear or u.path_revision != navigation_revision or u.path.is_empty():
+		var reachable := reachable_goal(point(u), destination)
+		if reachable == Vector2i(-1, -1): return Vector2.INF
+		if not clear:
+			destination = Vector2(reachable)
+			u.goal_x = destination.x
+			u.goal_y = destination.y
+	return destination
+
 func reachable_goal(source: Vector2, destination: Vector2) -> Vector2i:
+	if not source.is_finite() or not destination.is_finite(): return Vector2i(-1, -1)
 	var start := Vector2i(source.round())
 	var finish := Vector2i(destination.round())
-	if not walkable(start): start = Vector2i(safe_cell(source))
+	if not walkable(start):
+		var safe := safe_cell(source)
+		if not safe.is_finite(): return Vector2i(-1, -1)
+		start = Vector2i(safe)
 	if walkable(finish):
 		return finish if not navigation.get_id_path(start, finish).is_empty() else Vector2i(-1, -1)
 	# All entrances around the full footprint, including the rear of a castle.
@@ -1187,8 +1207,11 @@ func unit_position_clear(pos: Vector2, kind: String, except_id := -1, reserved: 
 	return true
 
 func free_unit_position(pos: Vector2, kind: String, except_id := -1, reserved: Array = []) -> Vector2:
+	if not pos.is_finite(): return Vector2.INF
 	if unit_position_clear(pos, kind, except_id, reserved): return pos
-	var origin := Vector2i(safe_cell(pos))
+	var safe := safe_cell(pos)
+	if not safe.is_finite(): return Vector2.INF
+	var origin := Vector2i(safe)
 	var pending: Array[Vector2i] = [origin]
 	var visited := {origin: true}
 	var index := 0
@@ -1268,6 +1291,26 @@ func replan_around_units(u: Dictionary, destination: Vector2) -> void:
 	if finish == Vector2i(destination.round()) and segment_clear(Vector2(finish), destination, Rules.terrain_radius(u.kind)):
 		u.path.append([destination.x, destination.y])
 
+func traffic_priority(u: Dictionary, direction: Vector2) -> bool:
+	for other in units:
+		if other.hp <= 0 or other.home != -1 or other.id >= u.id or other.path.is_empty(): continue
+		if other.order in ["idle", "hold", "stop"] or other.frozen > 0: continue
+		var offset := point(other) - point(u)
+		var clearance := Rules.body_radius(u.kind) + Rules.body_radius(other.kind) + 0.5
+		if offset.length_squared() > clearance * clearance or direction.dot(offset) <= 0: continue
+		var other_direction := (Vector2(other.path[0][0], other.path[0][1]) - point(other)).normalized()
+		if direction.dot(other_direction) < -0.25: return true
+	return false
+
+func yield_step(u: Dictionary, distance: float) -> bool:
+	var direction := Vector2(u.yield_direction[0], u.yield_direction[1])
+	for angle in [0.0, PI / 4, -PI / 4, PI / 2, -PI / 2]:
+		var candidate := point(u) + direction.rotated(angle) * distance
+		if unit_motion_clear(u, candidate):
+			set_point(u, candidate)
+			return true
+	return false
+
 func move_unit(u: Dictionary, destination: Vector2, delta: float) -> void:
 	var terrain_radius := Rules.terrain_radius(u.kind)
 	var start := Vector2i(point(u).round())
@@ -1319,15 +1362,24 @@ func move_unit(u: Dictionary, destination: Vector2, delta: float) -> void:
 		u.progress_distance = goal_distance
 	var target := Vector2(u.path[0][0], u.path[0][1])
 	var speed := float(catalog[u.kind].move_speed) * (1.0 - float(u.slow) if u.slow_time > 0 else 1.0)
+	if float(u.get("yield_time", 0)) > 0:
+		u.yield_time = maxf(0, u.yield_time - delta)
+		if yield_step(u, speed * delta): return
 	var next_position := point(u).move_toward(target, speed * delta)
 	if not unit_motion_clear(u, next_position):
+		var direction := (target - point(u)).normalized()
+		if traffic_priority(u, direction):
+			# A stable ID breaks head-on symmetry; keeping the retreat for a short
+			# interval gives the other body room instead of alternating every tick.
+			u["yield_time"] = 0.8
+			u["yield_direction"] = [-direction.x, -direction.y]
+			if yield_step(u, speed * delta): return
 		u["blocked_time"] = float(u.get("blocked_time", 0)) + delta
 		if u.blocked_time >= 0.5:
 			replan_around_units(u, destination)
 			u.blocked_time = 0.0
 			return
 		# Slide around bodies without changing the terrain path or crossing walls.
-		var direction := (target - point(u)).normalized()
 		var moved := false
 		for angle in [PI / 6, -PI / 6, PI / 4, -PI / 4, PI / 2, -PI / 2]:
 			var candidate := point(u) + direction.rotated(angle) * minf(speed * delta, point(u).distance_to(target))
